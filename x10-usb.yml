@@ -1,0 +1,23 @@
+- hosts: jik6
+  tasks:
+  - name: install X10 udev rule
+    lineinfile:
+      dest: /etc/udev/rules.d/99-x10.rules
+      create: yes
+      regexp: '.*0bc7.*0002.*'
+      line: 'SUBSYSTEM=="usb", ATTRS{idVendor}=="0bc7", ATTRS{idProduct}=="0002", ACTION=="add", GROUP="jik", MODE="0664"'
+    register: x10udev
+  - name: blacklist ati_remote module
+    lineinfile:
+      dest: /etc/modprobe.d/ati_remote_blacklist.conf
+      create: yes
+      line: 'blacklist ati_remote'
+    register: x10modprobe
+  - name: unload ati_remote module
+    modprobe: name=ati_remote state=absent
+  - name: reload udev rules
+    command: udevadm control --reload-rules
+    when: x10udev.changed or x10modprobe.changed
+  - name: trigger udev rules
+    command: udevadm trigger
+    when: x10udev.changed or x10modprobe.changed

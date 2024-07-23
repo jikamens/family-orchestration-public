@@ -1,0 +1,53 @@
+---
+- name: install YubiKey monitor
+  hosts: desktops
+  tasks:
+
+  - name: get secrets
+    include_vars: '{{inventory_dir}}/secrets.yml'
+
+  - name: install procmail for lockfile command
+    apt: name=procmail
+
+  - name: install YubiKey monitor script
+    copy:
+      dest: /usr/local/bin/yubikey-monitor.sh
+      src: ../remember-the-yubikey/yubikey-monitor.sh
+      mode: 0755
+
+  - name: Configure Pushover keys
+    copy:
+      dest: /root/.pushover_keys
+      content: |
+        {{pushover_api_token}}
+        {{pushover_user_key}}
+
+  - name: install YubiKey service
+    copy:
+      dest: /etc/systemd/system/yubikey-monitor.service
+      src: ../remember-the-yubikey/linux/yubikey-monitor.service
+    register: servicecopied
+
+  - name: install YubiKey timer
+    copy:
+      dest: /etc/systemd/system/yubikey-monitor.timer
+      src: ../remember-the-yubikey/linux/yubikey-monitor.timer
+    register: timercopied
+
+  - name: enable timer
+    systemd:
+      daemon_reload: yes
+      name: yubikey-monitor.timer
+      enabled: yes
+      state: started
+    when: servicecopied.changed or timercopied.changed
+
+  - name: install udev rule
+    copy:
+      dest: /etc/udev/rules.d/50-yubikey.rules
+      src: ../remember-the-yubikey/linux/50-yubikey.rules
+    register: udevrule
+
+  - name: reload udev
+    command: udevadm control --reload
+    when: udevrule.changed

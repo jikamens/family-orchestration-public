@@ -1,0 +1,83 @@
+- import_playbook: desktops/etherwake.yml
+
+- hosts: jik_hosts
+  tasks:
+  - name: configure pull rebase for root
+    ini_file:
+      path: /root/.gitconfig
+      section: pull
+      option: rebase
+      value: "true"
+
+  - name: configure submodule recurse for root
+    ini_file:
+      path: /root/.gitconfig
+      section: submodule
+      option: recurse
+      value: "true"
+    
+  - name: configure jikamens.github.com, step 1
+    lineinfile:
+      path: /root/.ssh/config
+      line: "Host *.github.com"
+      create: true
+      
+  - name: configure jikamens.github.com, step 2
+    lineinfile:
+      path: /root/.ssh/config
+      line: "  HostName github.com"
+      insertafter: "^Host \\*\\.github\\.com"
+      
+  - name: git updates
+    include_tasks: fragments/git_deploy.yml
+    vars:
+      directory: "~jik/src/{{item}}"
+    with_items:
+    - scripts
+    - dotfiles
+    - toodledo-python
+    - family-orchestration
+    - jobs-filterer-for-linkedin
+    - keyless-entry
+    - allow-locked-remote-desktop
+
+  - name: install non-root scripts
+    shell: make install_non_root
+    args:
+      chdir: ~/build/scripts
+    become: yes
+    become_user: jik
+    register: make_output
+    changed_when: "'Nothing to be done for' not in make_output.stdout"
+
+  - name: install root scripts
+    shell: make install_root
+    args:
+      chdir: ~jik/build/scripts
+    register: make_output
+    changed_when: "'Nothing to be done for' not in make_output.stdout"
+
+  - name: install dotfiles
+    shell: make install
+    args:
+      chdir: ~/build/dotfiles
+    become: yes
+    become_user: jik
+    register: make_output
+    changed_when: "'Nothing to be done for' not in make_output.stdout"
+
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: build jobs-filterer-for-linkedin
+    shell: make
+    args:
+      chdir: ~/src/jobs-filterer-for-linkedin
+    become: yes
+    become_user: jik
+    register: make_output
+    changed_when: "'Nothing to be done for' not in make_output.stdout"

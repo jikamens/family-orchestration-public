@@ -1,0 +1,5 @@
+- hosts: localhost
+  connection: local
+  tasks:
+  - name: include fix Emacs fragments
+    include_tasks: ../fragments/fix_emacs.yml

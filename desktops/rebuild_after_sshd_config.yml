@@ -1,0 +1,40 @@
+---
+- import_playbook: mirror_secrets.yml
+- import_playbook: hostname.yml
+- import_playbook: zram.yml
+# 2023-09-02 not necessary on Debian? Maybe obsolute on Ubuntu too?
+#- import_playbook: thinkpad/touchpad.yml
+# My ThinkPad dock is long gone, never to return
+#- import_playbook: thinkpad/dock.yml
+#- import_playbook: no_dnsmasq.yml
+- import_playbook: install_packages.yml
+- import_playbook: configs.yml
+# 2023-09-02 I am not sure this is necessary anymore, let's disable it and
+# find out.
+#- import_playbook: usb-audio-select.yml
+# Networking comes before zoom because zoom uses etherwake
+- import_playbook: networking.yml
+- import_playbook: zoom.yml
+- import_playbook: synology-drive.yml
+- import_playbook: dumb_postfix.yml
+- import_playbook: fail2ban.yml
+- import_playbook: xrn.yml
+- import_playbook: ddclient/ddclient.yml
+- import_playbook: users.yml
+- import_playbook: a2ps.yml
+- import_playbook: automatic_login.yml
+- import_playbook: expensepages.yml
+- import_playbook: yubikey-monitor.yml
+- import_playbook: ../nameserver/nameserver.yml
+- import_playbook: ../netfs.yml
+- import_playbook: ../x10-usb.yml
+- import_playbook: ../httpd/httpd.yml
+- import_playbook: ../vpn.yml
+- import_playbook: displaylink.yml
+- import_playbook: jik-customizations.yml
+- import_playbook: green-screen.yml
+# 2023-09-02 this repository is empty *sigh*
+#- import_playbook: teams.yml
+- import_playbook: ../backups/jik6_backup.yml
+- import_playbook: ../git_deploys.yml
+- import_playbook: ../fix_perl_imap4.yml

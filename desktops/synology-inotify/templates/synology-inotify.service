@@ -1,0 +1,11 @@
+[Unit]
+Description=Force hard-linked files to sync to Synology Drive
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/home/jik/bin/synology-inotify.py --canary-url {{synology_inotify_canary}}
+
+[Install]
+WantedBy=default.target

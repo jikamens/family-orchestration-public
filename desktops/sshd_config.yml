@@ -1,0 +1,82 @@
+---
+- hosts: desktops
+  tasks:
+    - name: install openssh-server and ufw
+      apt:
+        name:
+          - openssh-server
+          - ufw
+
+    - name: configure authorized key for root
+      authorized_key:
+        user: root
+        key: "{{ lookup('file', '~jik/.ssh/id_rsa4096.pub') }}"
+    - name: enable root ssh public key authentication
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        line: PermitRootLogin without-password
+      register: rootsshyeskey
+    - name: disable root ssh non-key authentication
+      replace:
+        dest: /etc/ssh/sshd_config
+        regexp: ^\s*PermitRootLogin(?!.*without-password).*\n?
+      register: rootsshnopassword
+    - name: disable sshd password authentication
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        line: PasswordAuthentication no
+        regexp: ^\s*PasswordAuthentication
+      register: nopasswordauthentication
+
+    - name: create ssh.socket.d
+      file:
+        dest: /etc/systemd/system/ssh.socket.d
+        state: directory
+      when: extra_ssh_port is defined
+    - name: create sshd listen.conf
+      lineinfile:
+        dest: /etc/systemd/system/ssh.socket.d/listen.conf
+        line: '[Socket]'
+        create: yes
+      when: extra_ssh_port is defined
+    - name: add extra port to sshd listen.conf
+      lineinfile:
+        dest: /etc/systemd/system/ssh.socket.d/listen.conf
+        line: ListenStream={{extra_ssh_port}}
+        insertafter: '\[Socket\]'
+      when: extra_ssh_port is defined
+      register: sshdport
+    - name: reload systemd
+      systemd: daemon_reload=yes
+      when: sshdport.changed
+
+    - name: make sure ssh.service is disabled
+      systemd: name=ssh.service enabled=no
+      register: sshservice
+
+    - name: stop ssh.service if it was previously enabled
+      systemd: name=ssh.service state=stopped
+      when: sshservice.changed
+
+    - name: make sure ssh.socket is enabled
+      systemd: name=ssh.socket enabled=yes state=started
+      register: sshsocket
+
+    - name: restart ssh.socket if necessary
+      systemd: name=ssh.socket state=restarted
+      when: (rootsshyeskey.changed or
+             rootsshnopassword.changed or sshdport.changed or
+             nopasswordauthentication.changed)
+
+    - name: enable and start ufw
+      service: name=ufw enabled=yes state=started
+
+    - name: enable ufw
+      ufw: state=enabled
+
+    - name: add OpenSSH port to ufw
+      ufw: rule=allow name=OpenSSH
+
+    - name: add extra SSH port to ufw
+      ufw: rule=allow port="{{extra_ssh_port|string}}" proto=tcp
+      when: extra_ssh_port is defined

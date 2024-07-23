@@ -1,0 +1,73 @@
+- hosts: desktops
+  gather_facts: no
+  vars:
+    flag_file: /home/jik/.rdp-password-needed
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: Create Remmina config directory
+    file:
+      path: /home/jik/.config/remmina
+      state: directory
+      owner: jik
+      group: jik
+      
+  - name: Tell Remmina not to confirm window closes
+    ini_file:
+      path: /home/jik/.config/remmina/remmina.pref
+      owner: jik
+      group: jik
+      section: remmina_pref
+      option: confirm_close
+      value: 'false'
+      no_extra_spaces: true
+
+  - name: Create Remmina profile directory
+    file:
+      path: /home/jik/.local/share/remmina
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: Create Remmina profile directory
+    file:
+      path: /home/jik/.remmina
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: Install Remmina profiles
+    include_tasks: ../../fragments/rdp_hosts.yml
+    loop: [3389]
+    loop_control:
+      loop_var: rdpPort
+
+  - apt: name=gnome-remote-desktop
+
+  - name: enable RDP
+    gsetting:
+      user: jik
+      settings:
+        org.gnome.desktop.remote-desktop.rdp.enable: "{{'true'|string}}"
+        org.gnome.desktop.remote-desktop.rdp.view-only: "{{'false'|string}}"
+    register: rdpenabled
+
+  - name: Create RDP password-needed flag file
+    copy:
+      dest: "{{flag_file}}"
+      content: ""
+      owner: jik
+      group: jik
+    when: rdpenabled.changed
+
+  - name: Check if RDP password-needed flag file exists
+    stat: path={{flag_file}}
+    register: flagfile
+
+  - name: Alert about setting RDP password
+    fail:
+      msg: Set the RDP password by hand, delete {{flag_file}}, and
+        rerun the playbook
+    when: rdpenabled.changed or flagfile.stat.exists

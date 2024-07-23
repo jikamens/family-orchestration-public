@@ -1,0 +1,55 @@
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: disable Templates directory in favorites
+    lineinfile:
+      path: /home/jik/.config/user-dirs.dirs
+      line: XDG_TEMPLATES_DIR="$HOME"
+      regexp: ^XDG_TEMPLATES_
+
+  - name: disable Public directory in favorites
+    lineinfile:
+      path: /home/jik/.config/user-dirs.dirs
+      line: XDG_PUBLICSHARE_DIR="$HOME"
+      regexp: ^XDG_PUBLICSHARE_
+
+  - name: disable Documents directory in favorites
+    lineinfile:
+      path: /home/jik/.config/user-dirs.dirs
+      line: XDG_DOCUMENTS_DIR="$HOME"
+      regexp: ^XDG_DOCUMENTS_
+
+  - name: disable Music directory in favorites
+    lineinfile:
+      path: /home/jik/.config/user-dirs.dirs
+      line: XDG_MUSIC_DIR="$HOME"
+      regexp: ^XDG_MUSIC_
+
+  - name: disable Pictures directory in favorites
+    lineinfile:
+      path: /home/jik/.config/user-dirs.dirs
+      line: XDG_PICTURES_DIR="$HOME"
+      regexp: ^XDG_PICTURES_
+
+  - name: disable Videos directory in favorites
+    lineinfile:
+      path: /home/jik/.config/user-dirs.dirs
+      line: XDG_VIDEOS_DIR="$HOME"
+      regexp: ^XDG_VIDEOS_
+
+  - name: Add Desktop to Nautilus bookmarks
+    lineinfile:
+      path: /home/jik/.config/gtk-3.0/bookmarks
+      line: file:///home/jik/Desktop
+      create: yes
+      
+  - name: Add CloudStation to Nautilus bookmarks
+    lineinfile:
+      path: /home/jik/.config/gtk-3.0/bookmarks
+      line: file:///home/jik/CloudStation
+      create: yes
+

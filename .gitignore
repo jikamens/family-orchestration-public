@@ -1,0 +1,8 @@
+.#*
+*~
+*.retry
+.ansible-facts
+desktops/inc
+mod-relay/aliases
+namecheap/namecheap-dns-config.yml
+secrets.yml

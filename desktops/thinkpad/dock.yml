@@ -1,0 +1,30 @@
+---
+- hosts: thinkpads
+  tasks:
+  - name: create /etc/thinkpad
+    file:
+      path: /etc/thinkpad
+      state: directory
+
+  - name: install thinkpad dock script
+    copy:
+      src: dock.sh
+      dest: /etc/thinkpad/dock.sh
+      mode: 0755
+
+  - name: install thinkpad udev rule
+    copy:
+      content: |
+        SUBSYSTEM=="usb", ACTION=="add|remove", ENV{PRODUCT}=="17ef/3071/*", RUN+="/etc/thinkpad/dock.sh"
+      dest: /lib/udev/rules.d/85-thinkpad-dock.rules
+    register: udev_rules
+
+  - name: install leave-on script
+    copy:
+      src: leave-on.sh
+      dest: /usr/local/bin/leave-on
+      mode: 0755
+
+  - name: reload udev
+    command: udevadm control --reload-rules
+    when: udev_rules.changed

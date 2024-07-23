@@ -1,0 +1,24 @@
+- hosts: desktops
+  tasks:
+  - name: Install zram-tools
+    apt: name=zram-tools
+  - name: configure zram-tools to use 25% of RAM
+    replace:
+      path: /etc/default/zramswap
+      regexp: '^\s*#?\s*PERCENT\s*=.*'
+      replace: PERCENT=25
+    register: percented
+  - name: restart zramswap if configuration changed
+    service: name=zramswap state=restarted
+    when: percented.changed
+  - name: make sure zramswap is enabled and running
+    service: name=zramswap enabled=yes state=started
+  - name: disable legacy swap in /etc/fstab
+    replace:
+      path: /etc/fstab
+      regexp: '^(\s*[^#\n].*\bswap\b)'
+      replace: '#\1'
+    register: replaced
+  - name: prompt for reboot if legacy swap disabled
+    fail: msg='Please reboot and rerun playbook'
+    when: replaced.changed

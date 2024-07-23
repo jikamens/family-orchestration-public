@@ -1,0 +1,314 @@
+---
+- name: desktop configurations
+  hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: increase number of fingerprint attempts
+    replace:
+      path: /etc/pam.d/gdm-fingerprint
+      regexp: (pam_fprintd\.so)(?!.*max-tries)
+      replace: '\1 max-tries=7'
+
+  - name: enable grub timeout
+    lineinfile:
+      dest: /etc/default/grub
+      line: 'GRUB_TIMEOUT=10'
+      regexp: '^GRUB_TIMEOUT='
+    register: grub_timeout
+
+  - name: enable grub menu
+    lineinfile:
+      dest: /etc/default/grub
+      line: 'GRUB_TIMEOUT_STYLE=menu'
+      regexp: '^GRUB_TIMEOUT_STYLE='
+    register: grub_menu
+
+  - name: update grub if necessary
+    command: update-grub
+    when: grub_timeout.changed or grub_menu.changed
+
+  # UFW logging is usually useless
+  - name: enable UFW and disable logging
+    ufw: state=enabled logging=off
+
+  # - name: Enable Ghostscript types in ImageMagick
+  #   replace:
+  #     path: /etc/ImageMagick-6/policy.xml
+  #     regexp: 'rights="none" pattern="(PS[23]?|EPS|PDF|XPS)"'
+  #     replace: 'rights="read|write" pattern="\1"'
+
+  - name: enable and start mongod service
+    service: name=mongod enabled=yes state=started
+
+  - name: check for lightdm guest session
+    stat: path=/usr/share/lightdm/guest-session
+    register: guest_session_path
+  - name: Disable Guest Login Sessions
+    blockinfile:
+      dest: /usr/share/lightdm/lightdm.conf.d/50-no-guest.conf
+      block: |
+        [Seat:*]
+        allow-guest=false
+      create: true
+    when: guest_session_path.stat.exists
+
+  - name: disable max job time in cups
+    lineinfile:
+      dest: /etc/cups/cupsd.conf
+      regexp: '^\s+MaxJobTime'
+      line: 'MaxJobTime 0'
+    register: maxjobtime
+
+  - name: restart cupsd
+    service: name=cups state=restarted
+    when: maxjobtime.changed
+
+  - name: noop to stub out laptop-only task
+    command: 'true'
+    changed_when: false
+    register: override_conf
+
+  - name: noop to stub out framework-only task
+    command: 'true'
+    changed_when: false
+    register: als_blacklist
+
+  - name: noop to stub out framework-only task
+    command: 'true'
+    changed_when: false
+    register: headset_mic_input
+
+  - name: noop to stub out framework-only task
+    command: 'true'
+    changed_when: false
+    register: noacpi
+
+  - name: make sure anacron is installed
+    apt: name=anacron
+
+  - name: make sure anacron is enabled
+    systemd: name=anacron.timer enabled=yes state=started
+
+  # This arguments specified below are what -a, which is the default, does,
+  # minus "-l error".
+  - name: disable error log reporting in smartd
+    lineinfile:
+      path: /etc/smartd.conf
+      line: DEVICESCAN -H -f -t -l selftest -C 197 -U 198 -d removable
+        -n standby -m root -M exec /usr/share/smartmontools/smartd-runner
+      regexp: ^DEVICESCAN
+    register: smartdconf
+
+  - name: reload smartd
+    service: name=smartd state=reloaded
+    when: smartdconf.changed
+
+  - name: configure apticron not to notify about holds
+    lineinfile:
+      dest: /etc/apticron/apticron.conf
+      create: true
+      regexp: '^NOTIFY_HOLDS='
+      line: 'NOTIFY_HOLDS="0"'
+
+  - name: configure apticron to specify apt-listchanges profile
+    lineinfile:
+      dest: /etc/apticron/apticron.conf
+      regexp: '^\s*LISTCHANGES_PROFILE'
+      line: 'LISTCHANGES_PROFILE="apticron"'
+
+  - name: configure apt-listchanges apticron profile for news only
+    copy:
+      dest: /etc/apt/listchanges.conf.d/apticron.conf
+      content: |
+        [apticron]
+        which=news
+
+  - name: debconf apt-listchanges/email-address
+    debconf:
+      name: apt-listchanges
+      question: apt-listchanges/email-address
+      vtype: string
+      value: none
+
+  - name: /etc/apt/listchanges.conf email_address
+    lineinfile:
+      dest: /etc/apt/listchanges.conf
+      line: email_address=none
+      regexp: ^\s*email_address
+
+- hosts: laptops
+  tasks:
+  - name: disable suspend on lid close
+    ini_file:
+      path: /etc/systemd/logind.conf
+      section: Login
+      option: "{{item}}"
+      value: lock
+    register: lidswitch
+    with_list: [HandleLidSwitch, HandleLidSwitchExternalPower]
+
+  - name: restart systemd-logind
+    service: name=systemd-logind state=restarted
+    when: lidswitch.changed
+
+  - name: create systemd-logind override directdory
+    file:
+      path: /etc/systemd/system/systemd-logind.service.d
+      state: directory
+
+  - name: enable debug logging in logind override.conf
+    community.general.ini_file:
+      path: /etc/systemd/system/systemd-logind.service.d/override.conf
+      section: Service
+      option: Environment
+      value: SYSTEMD_LOG_LEVEL=debug
+      no_extra_spaces: yes
+    register: override_conf
+
+  - name: disable mariadb and postgresql on laptops
+    service: name={{item}} enabled=no state=stopped
+    with_items:
+    - mariadb
+    - postgresql
+
+  - name: Install NetworkManager SSH config proxy generator
+    template:
+      src: ssh_config_proxy_gen
+      dest: /etc/NetworkManager/dispatcher.d/ssh_config_proxy_gen
+      mode: 0755
+
+- name: make mariadb listen on all interfaes
+  hosts: jik6
+  tasks:
+  - name: add bind-address line to mariadb config
+    lineinfile:
+      dest: /etc/mysql/mariadb.conf.d/50-server.cnf
+      regexp: '^\s*bind-address'
+      line: 'bind-address = 0.0.0.0'
+    register: mariadb_bind
+
+  - name: reload mariadb
+    service: name=mariadb state=restarted
+    when: mariadb_bind.changed
+
+- name: tweak sudo behavior for jik
+  hosts: jik_hosts
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: set sudoers defaults for jik
+    copy:
+      dest: /etc/sudoers.d/jik-is-special
+      content: |
+        Defaults:jik !always_set_home
+        Defaults:jik !env_reset
+        Defaults:jik !secure_path
+        Defaults:jik env_delete += "XDG_RUNTIME_DIR XDG_SESSION_ID"
+
+  - name: set timezone
+    community.general.timezone: name=America/New_York
+
+- name: dual boot configurations
+  hosts: dual_boot
+  tasks:
+  # Windows wants hardware clock to store local time because it is stupid.
+  - name: store local time in hardware clock
+    community.general.timezone: hwclock=local
+
+# https://github.com/FrameworkComputer/linux-docs/blob/main/Ubuntu23.04-Manual-Setup-12thGen.md
+- hosts: frameworks
+  tasks:
+  - name: Enable headset mic input.
+    lineinfile:
+      path: /etc/modprobe.d/alsa-base.conf
+      create: yes
+      line: options snd-hda-intel model=dell-headset-multi
+    register: headset_mic_input
+
+  - name: blacklist hid_sensor_hub on framework so brightness function keys work
+    lineinfile:
+      path: /etc/modprobe.d/framework-als-blacklist.conf
+      line: blacklist hid_sensor_hub
+      create: yes
+    register: als_blacklist
+
+  - name: regenerate initramfs after blacklisting hid_sensor_hub
+    command: update-initramfs -c -k all
+    when: als_blacklist.changed
+
+  - name: fix suspend power usage on framework
+    lineinfile:
+      line: GRUB_CMDLINE_LINUX_DEFAULT="quiet splash nvme.noacpi=1"
+      path: /etc/default/grub
+      regexp: ^GRUB_CMDLINE_LINUX_DEFAULT
+    register: noacpi
+
+  - name: update grub after fixing suspend power usage
+    command: update-grub
+    when: noacpi.changed
+
+  - name: Enable improved fractional scaling support for Ubuntu's GNOME environment using Wayland.
+    gsetting:
+      user: jik
+      key: org.gnome.mutter.experimental-features
+      value: "['scale-monitor-framebuffer']"
+
+  - name: Get device ID of WiFi card
+    shell: lsusb | sed -n -E -e 's/.* ID (\S+) .* AX210 .*/\1/p' | tr -d '\n'
+    register: wifi_id
+    failed_when: wifi_id.stdout == ""
+    changed_when: false
+
+  - name: check if TLP USB denylist already exists
+    shell: grep -E '^\s*USB_DENYLIST' /etc/tlp.conf
+    failed_when: false
+    changed_when: false
+    register: denylist_exists
+
+  - name: create empty TLP USB denylist
+    lineinfile:
+      path: /etc/tlp.conf
+      insertafter: ^#USB_DENYLIST
+      line: USB_DENYLIST=""
+    when: denylist_exists.rc != 0
+
+  - name: check if WiFi card already on TLP USB denylist
+    shell: grep -E '^\s*USB_DENYLIST.*{{wifi_id.stdout}}' /etc/tlp.conf
+    register: denylist_ok
+    failed_when: false
+    changed_when: false
+
+  - name: add WiFi device to TLP USB denylist
+    lineinfile:
+      path: /etc/tlp.conf
+      regexp: ^(\s*)USB_DENYLIST(\s*=\s*)"(.*)"
+      line: \1USB_DENYLIST\2"{{wifi_id.stdout}} \3"
+      backrefs: yes
+    when: denylist_ok.rc != 0
+    register: change_denylist
+
+  - name: restart TLP
+    service: name=tlp state=restarted
+    when: change_denylist.changed
+
+- hosts: desktops
+  tasks:
+  - name: reboot message
+    fail: msg='Please reboot and rerun playbook'
+    when: headset_mic_input.changed or override_conf.changed or
+      als_blacklist.changed or noacpi.changed
+
+- hosts: framework1l
+  tasks:
+  - name: Enable grub OS prober on framework1l
+    lineinfile:
+      path: /etc/default/grub
+      regexp: '^\s*#?\s*GRUB_DISABLE_OS_PROBER'
+      line: GRUB_DISABLE_OS_PROBER=false

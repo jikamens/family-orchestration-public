@@ -1,0 +1,64 @@
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: fetch current enabled extensions
+    gsetting:
+      user: jik
+      key: org.gnome.shell.enabled-extensions
+      value: ""
+    check_mode: true
+    changed_when: false
+    register: enabled
+
+  - name: convert enabled extensions to list
+    set_fact: enabled_extensions={{enabled.unchanged_settings[0].value |
+      replace('@as ', '')}}
+
+  - name: build Allow Locked Remote Desktop
+    command: make
+    args:
+      chdir: /home/jik/src/allow-locked-remote-desktop
+    become: yes
+    become_user: jik
+    when: '"allowlockedremotedesktop" not in enabled.unchanged_settings[0].value'
+
+  - name: install Allow Locked Remote Desktop
+    command: gnome-extensions install
+      allowlockedremotedesktop@kamens.us.shell-extension.zip
+    args:
+      chdir: /home/jik/src/allow-locked-remote-desktop
+    become: yes
+    become_user: jik
+    when: '"allowlockedremotedesktop" not in enabled.unchanged_settings[0].value'
+   
+  - name: add additional enabled extensions
+    set_fact: enabled_extensions={{enabled_extensions + [item]}}
+    when: item not in enabled_extensions
+    with_list:
+    - dash-to-dock@micxgx.gmail.com
+    - ubuntu-appindicators@ubuntu.com
+    - "ding@rastersoft.com"
+    - "allowlockedremotedesktop@kamens.us"
+    register: extensionsadded
+
+  - name: update configuration of enabled extensions
+    gsetting:
+      user: jik
+      key: org.gnome.shell.enabled-extensions
+      value: '{{enabled_extensions|string}}'
+
+  - name: configure dock extension
+    gsetting:
+      user: jik
+      settings:
+        org.gnome.shell.extensions.dash-to-dock.click-action: "{{\"'minimize'\"|string}}"
+        org.gnome.shell.extensions.dash-to-dock.dock-position: "{{\"'LEFT'\"|string}}"
+        org.gnome.shell.extensions.dash-to-dock.hot-keys: "{{'false'|string}}"
+        org.gnome.shell.extensions.dash-to-dock.show-mounts: "{{'false'|string}}"
+        org.gnome.shell.extensions.dash-to-dock.show-trash: "{{'false'|string}}"
+        org.gnome.shell.extensions.dash-to-dock.disable-overview-on-startup: "{{'true'|string}}"
+        org.gnome.shell.extensions.dash-to-dock.running-indicator-style: "{{\"'DOTS'\"|string}}"

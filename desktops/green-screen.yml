@@ -1,0 +1,27 @@
+# https://srcco.de/posts/using-obs-studio-with-v4l2-for-google-hangouts-meet.html
+
+---
+- name: set up OBS for green screen videoconferencing
+  hosts: jik6
+  tasks:
+
+  - name: install needed packages
+    apt:
+      name:
+      - obs-studio
+      - v4l2loopback-dkms
+
+  - name: kernel options for virtual camera device
+    lineinfile:
+      dest: /etc/modprobe.d/obs-cam.conf
+      create: true
+      line: options v4l2loopback devices=1 video_nr=10 card_label="OBS Cam" exclusive_caps=1
+
+  - name: configure virtual camera device to load on boot
+    lineinfile:
+      dest: /etc/modules-load.d/obs-cam.conf
+      create: true
+      line: v4l2loopback
+
+  - name: load virtual camera device
+    modprobe: name=v4l2loopback

@@ -1,0 +1,338 @@
+# https://www.howtoforge.com/tutorial/how-to-install-openvpn-on-centos-7/
+---
+- hosts: main_server
+  vars:
+    easyrsa: "/usr/share/easy-rsa/3.1.6/easyrsa --batch"
+    common_server_conf: |
+      ca /etc/openvpn/pki/ca.crt
+      cert /etc/openvpn/pki/issued/server.crt
+      key /etc/openvpn/pki/private/server.key
+      dh /etc/openvpn/pki/dh.pem
+      keepalive 20 60
+      push "redirect-gateway def1"
+      push "dhcp-option DNS 8.8.8.8"
+      push "dhcp-option DNS 8.8.4.4"
+      user nobody
+      persist-key
+      persist-tun
+      mute-replay-warnings
+      topology subnet
+
+  tasks:
+
+  - name: get secrets
+    include_vars: secrets.yml
+  
+  - name: install openvpn and dependent packages
+    yum:
+      name:
+      - openvpn
+      - easy-rsa
+      - iptables-services
+
+  - name: install pexpect
+    pip: name=pexpect
+
+  - name: init-pki
+    command: "{{easyrsa}} init-pki"
+    args:
+      chdir: /etc/openvpn
+      creates: /etc/openvpn/pki
+
+  - name: build-ca
+    expect:
+      chdir: /etc/openvpn
+      command: "{{easyrsa}} build-ca"
+      creates: /etc/openvpn/pki/private/ca.key
+      responses:
+        "pass phrase:": "{{openvpn_ca_passphrase}}"
+
+  - name: remove /etc/openvpn/pki/reqs/server.req
+    file:
+      path: /etc/openvpn/pki/reqs/server.req
+      state: absent
+
+  - name: build-server-full
+    expect:
+      chdir: /etc/openvpn
+      command: "{{easyrsa}} build-server-full server nopass"
+      creates: /etc/openvpn/pki/private/server.key
+      responses:
+        "/ca.key:": "{{openvpn_ca_passphrase}}"
+
+  - name: gen-dh
+    command: "{{easyrsa}} gen-dh"
+    args:
+      chdir: /etc/openvpn
+      creates: /etc/openvpn/pki/dh.pem
+
+  - name: remove /etc/openvpn/pki/reqs/*.req
+    file:
+      path: "/etc/openvpn/pki/reqs/{{item}}.req"
+      state: absent
+    with_items: "{{groups['vpn_clients']}}"
+
+  - name: build client keys for VPN clients
+    expect:
+      chdir: /etc/openvpn
+      command: "{{easyrsa}} build-client-full {{item}} nopass"
+      responses:
+        "/ca.key:": "{{openvpn_ca_passphrase}}"
+      creates: "/etc/openvpn/pki/private/{{item}}.key"
+    with_items: "{{groups['vpn_clients']}}"
+
+  - name: create UDP server configuration file
+    copy:
+      dest: /etc/openvpn/server/server.conf
+      content: |
+        proto udp6
+        dev tun_jik4
+        explicit-exit-notify
+        server 192.168.199.0 255.255.255.0
+        {{common_server_conf}}
+
+  - name: create TCP server configuration file
+    copy:
+      dest: /etc/openvpn/server/server-tcp.conf
+      content: |
+        proto tcp6
+        dev tun_jik4_tcp
+        server 192.168.200.0 255.255.255.0
+        {{common_server_conf}}
+
+  - name: start UDP server daemon
+    service: name=openvpn-server@server enabled=yes state=started
+
+  - name: start TCP server daemon
+    service: name=openvpn-server@server-tcp enabled=yes state=started
+
+  - name: fetch CA certificate
+    fetch:
+      dest: /tmp/openvpn/
+      src: /etc/openvpn/pki/ca.crt
+      flat: true
+    changed_when: false
+
+  - name: fetch client certificates
+    fetch:
+      dest: "/tmp/openvpn/"
+      src: "/etc/openvpn/pki/issued/{{item}}.crt"
+      flat: true
+    with_items: "{{groups['vpn_clients']}}"
+    changed_when: false
+
+  - name: fetch client keys
+    fetch:
+      dest: "/tmp/openvpn/"
+      flat: true
+      src: "/etc/openvpn/pki/private/{{item}}.key"
+    with_items: "{{groups['vpn_clients']}}"
+    changed_when: false
+
+  - name: enable IP forwarding
+    sysctl:
+      name: net.ipv4.ip_forward
+      value: '1'
+
+  # We can't do this automatically because the format of
+  # /etc/sysconfig/iptables is f*cked and there's no unique line we
+  # can match on to get the blocks in the right place. So we just need
+  # to check if the lines are there and if not then tell the user to
+  # add them.
+  # -A FORWARD -i enp0s4 -o tun+ -j ACCEPT
+  # -A FORWARD -i tun+ -o enp0s4 -j ACCEPT
+  # -A INPUT -p udp -m state --state NEW -m udp --dport 1194 -j ACCEPT
+  # -A INPUT -p tcp -m state --state NEW -m tcp --dport 1194 -j ACCEPT
+  - name: check for filter table VPN rules (add by hand if play fails)
+    shell: grep -e '-A FORWARD -i tun' /etc/sysconfig/iptables
+    changed_when: false
+
+  # -A PREROUTING -i enp0s4 -p tcp --dport 3128 -m mark --mark 0x64 -j DNAT --to-destination :1194
+  # -A POSTROUTING -o enp0s4 -j MASQUERADE  
+  - name: check for nat table VPN rules (add by hand if play fails)
+    shell: grep -e '-A POSTROUTING -o enp0s4 -j MASQUERADE' /etc/sysconfig/iptables
+    changed_when: false
+
+  # -A PREROUTING -i enp0s4 -p tcp --dport 3128 -j MARK --set-mark 0x64
+  - name: check for mangle table VPN rules (add by hand if play fails)
+    shell: grep -e '-A PREROUTING.*3128' /etc/sysconfig/iptables
+    changed_when: false
+
+- hosts: vpn_clients:!offline_vpn_clients
+  vars:
+    common_conf: |
+      client
+      remote jik4.{{email_domain}}
+      nobind
+      user nobody
+      persist-key
+      persist-tun
+      mute-replay-warnings
+      remote-cert-tls server
+      up /etc/openvpn/update-systemd-resolved
+      down /etc/openvpn/update-systemd-resolved
+      down-pre
+    cert_conf: |
+      ca jik4-ca.crt
+      cert jik4.crt
+      key jik4.key
+    
+  tasks:
+
+  - name: install openvpn packages
+    apt:
+      name:
+      - openvpn
+      - openvpn-systemd-resolved
+      - network-manager-openvpn
+
+  - name: install CA certificate
+    copy:
+      dest: "/etc/openvpn/jik4-ca.crt"
+      src: "/tmp/openvpn/ca.crt"
+
+  - name: install client certificate
+    copy:
+      dest: "/etc/openvpn/jik4.crt"
+      src: "/tmp/openvpn/{{inventory_hostname}}.crt"
+
+  - name: install client key
+    copy:
+      dest: "/etc/openvpn/jik4.key"
+      src: "/tmp/openvpn/{{inventory_hostname}}.key"
+      owner: root
+      mode: 0600
+
+  - name: create client UDP configuration file
+    blockinfile:
+      path: /etc/openvpn/jik4.conf{{openvpn_conf_suffix}}
+      create: yes
+      marker: '# {mark} main configuration'
+      block: |
+        proto udp4
+        dev tun_jik4
+        {{common_conf}}
+        {{cert_conf}}
+
+  - name: create client TCP configuration file
+    blockinfile:
+      path: /etc/openvpn/jik4-tcp.conf{{openvpn_conf_suffix}}
+      create: yes
+      marker: '# {mark} main configuration'
+      block: |
+        proto tcp4
+        dev tun_jik4_tcp
+        port 3128
+        {{common_conf}}
+        {{cert_conf}}
+
+  - name: create UDP ovpn file
+    changed_when: false
+    copy:
+      dest: "/etc/openvpn/jik4.ovpn"
+      owner: root
+      mode: 0600
+      content: |
+        proto udp4
+        dev tun_jik4
+        {{common_conf}}
+        <ca>
+        {{lookup('file', '/tmp/openvpn/ca.crt')}}
+        </ca>
+        <cert>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.crt')}}
+        </cert>
+        <key>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.key')}}
+        </key>
+
+  - name: create TCP ovpn file
+    changed_when: false
+    copy:
+      dest: "/etc/openvpn/jik4-tcp.ovpn"
+      owner: root
+      mode: 0600
+      content: |
+        proto tcp4
+        dev tun_jik4_tcp
+        port 3128
+        {{common_conf}}
+        <ca>
+        {{lookup('file', '/tmp/openvpn/ca.crt')}}
+        </ca>
+        <cert>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.crt')}}
+        </cert>
+        <key>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.key')}}
+        </key>
+
+  - name: check if VPN configurations are imported
+    shell: 'nmcli connection show {{item}} >/dev/null'
+    ignore_errors: True
+    changed_when: False
+    failed_when: False
+    register: vpn_configs_imported
+    with_items:
+    - jik4
+    - jik4-tcp
+
+  - name: import VPN configurations as needed
+    shell: 'nmcli connection import type openvpn file /etc/openvpn/{{item.item}}.ovpn'
+    with_items: '{{vpn_configs_imported.results}}'
+    when: item.rc | default(0) != 0
+
+- hosts: offline_vpn_clients
+  gather_facts: no
+  vars:
+    common_conf: |
+      client
+      remote jik4.{{email_domain}}
+      nobind
+      user nobody
+      persist-key
+      persist-tun
+      mute-replay-warnings
+      remote-cert-tls server
+    
+  tasks:
+
+  - name: create UDP ovpn file
+    changed_when: false
+    delegate_to: 127.0.0.1
+    copy:
+      dest: "/tmp/openvpn/{{inventory_hostname}}-jik4.ovpn"
+      mode: 0600
+      content: |
+        proto udp4
+        dev tun_jik4
+        {{common_conf}}
+        <ca>
+        {{lookup('file', '/tmp/openvpn/ca.crt')}}
+        </ca>
+        <cert>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.crt')}}
+        </cert>
+        <key>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.key')}}
+        </key>
+
+  - name: create TCP ovpn file
+    changed_when: false
+    delegate_to: 127.0.0.1
+    copy:
+      dest: "/tmp/openvpn/{{inventory_hostname}}-jik4-tcp.ovpn"
+      mode: 0600
+      content: |
+        proto tcp4
+        dev tun_jik4_tcp
+        {{common_conf}}
+        <ca>
+        {{lookup('file', '/tmp/openvpn/ca.crt')}}
+        </ca>
+        <cert>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.crt')}}
+        </cert>
+        <key>
+        {{lookup('file', '/tmp/openvpn/{{inventory_hostname}}.key')}}
+        </key>

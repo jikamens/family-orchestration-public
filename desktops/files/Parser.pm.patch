@@ -1,0 +1,25 @@
+--- Parser.pm~	2016-12-08 05:53:40.000000000 -0500
++++ Parser.pm	2020-08-23 16:50:00.793106518 -0400
+@@ -169,12 +169,19 @@
+                 map {$_->set(hour=>$d->hour,minute=>$d->minute,
+                              second=>$d->second)
+                  } @$dates]);
+-        $set=$set
+-            ->complement(DateTime::Set->from_datetimes(dates=>$dates));
++        $set=$set->complement($exset);
++    }
++    # This is buggy but I don't know why.
++    my $tmp=$set->intersection($self->{span}) if $self->{span};
++    eval '$tmp->count';
++    if (! $@) {
++	$set = $tmp;
++	$tmp = undef;
+     }
+-    $set=$set->intersection($self->{span}) if $self->{span};
+     my $iter=$set->iterator;
+     while (my $dt=$iter->next) {
++	next if ($tmp and $self->{span}->start and $self->{span}->start > $dt);
++	last if ($tmp and $self->{span}->end and $self->{span}->end < $dt);
+         #bug found by D. Sweet. Fix alarms on entries
+         #other than first
+         my $new_event={%e,DTSTART=>$dt,DTEND=>$dt+$duration};

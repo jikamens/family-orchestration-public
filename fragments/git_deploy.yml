@@ -1,0 +1,31 @@
+- name: check if {{directory}} exists
+  stat: path={{directory}}
+  register: directory_stat
+
+- block:
+  - name: make sure root can git update {{directory}}
+    ini_file:
+      path: /root/.gitconfig
+      section: safe
+      option: directory
+      value: "{{directory}}"
+      exclusive: false
+
+  - name: git update {{directory}}
+    shell: GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git pull
+    args:
+      chdir: "{{directory}}"
+    register: git_pull
+    changed_when: "'Already up to date' not in git_pull.stdout and 'Successfully rebased' not in git_pull.stdout"
+
+  - name: git push {{directory}}
+    shell: GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git push
+    args:
+      chdir: "{{directory}}"
+    register: git_push
+    changed_when: "'Everything up-to-date' not in git_push.stderr"
+
+  - name: fix {{directory}} permissions
+    file: dest={{directory}} owner=jik recurse=yes
+    when: git_pull.changed or git_push.changed
+  when: directory_stat.stat.exists

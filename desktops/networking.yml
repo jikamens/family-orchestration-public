@@ -1,0 +1,73 @@
+---
+- import_playbook: ../nameserver/nameserver.yml
+- hosts: jik6
+  tasks:
+  - name: configure jik6 network interface
+    nmcli:
+      conn_name: "Wired connection 1"
+      type: ethernet
+      dns4: "127.0.0.1"
+      gw4: "{{gw4}}"
+      ifname: "enp2s0"
+      ip4: ["{{ip4_1}}/24", "{{ip4_2}}/24"]
+      state: present
+      dns4_search: ["{{home_domain}}", "{{email_domain}}"]
+    register: nmcli
+
+  - name: allow mysql access to jik6
+    ufw: rule=allow port=3306
+
+- hosts: laptops
+  tasks:
+  # This is necessary because otherwise our inotify-canary script doesn't
+  # pause properly because NetworkManager disconnects the WiFi adapter before
+  # calling the script.
+  - name: enable wake-on-wlan by default
+    ini_file:
+      path: /etc/NetworkManager/NetworkManager.conf
+      section: connection
+      option: wifi.wake-on-wlan
+      value: 8
+
+  - name: configure WiFi on laptops
+    nmcli:
+      conn_name: "rivimand"
+      state: present
+      dns4: "{{dns4}}"
+      dns4_ignore_auto: yes
+      dns4_search: ["{{home_domain}}", "{{email_domain}}"]
+      wifi: {wake-on-wlan: 8, powersave: 2}
+    register: nmcli
+
+  - name: enable wake-on-lan in TLP
+    lineinfile:
+      dest: /etc/tlp.conf
+      regexp: '^#?WOL_DISABLE'
+      line: WOL_DISABLE=N
+    register: wol_disable
+
+  - name: restart TLP if necessary
+    service: name=tlp state=restarted
+    when: wol_disable.changed
+
+- hosts: desktops
+  tasks:
+  - name: restart networking
+    command: systemctl restart NetworkManager
+    when: nmcli.changed
+
+  - name: install etherwake
+    apt: name=etherwake
+
+  - name: make etherwake setuid for ease of use
+    file:
+      path: /usr/sbin/etherwake
+      mode: 04755
+
+  - name: create /etc/ethers so I can use etherwake
+    lineinfile:
+      path: /etc/ethers
+      create: yes
+      regexp: '.* {{item}}'
+      line: '{{hostvars[item].wifi_mac}} {{item}}'
+    with_items: '{{groups["laptops"]}}'

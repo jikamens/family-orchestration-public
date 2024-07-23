@@ -1,0 +1,144 @@
+---
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: make sure systemd user directory exists
+    file:
+      path: /home/jik/.config/systemd/user
+      state: directory
+      owner: jik
+      group: jik
+
+  # Why doesn't systemd or systemctl do this automatically?
+  - name: make sure systemd default.taget directory exists
+    file:
+      path: /home/jik/.config/systemd/user/default.target.wants
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: install service file
+    template:
+      src: synology-inotify.service
+      dest: /home/jik/.config/systemd/user/synology-inotify.service
+      owner: jik
+      group: jik
+      mode: 0444
+
+  - name: make sure bin directory exists
+    file:
+      path: /home/jik/bin
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: install Python requests and inotify 
+    apt:
+      name:
+      - python3-requests
+      - python3-inotify
+
+  - name: install service script
+    copy:
+      src: synology-inotify.py
+      dest: /home/jik/bin/synology-inotify.py
+      owner: jik
+      group: jik
+      mode: 0555
+    register: script_changed
+
+  # Ugh, is there a better way than doing this twice?
+  - name: enable and start service file, try 1
+    systemd:
+      daemon_reload: yes
+      enabled: yes
+      name: synology-inotify
+      scope: user
+      state: started
+    become: yes
+    become_user: jik
+    when: not script_changed.changed
+
+  - name: enable and start service file, try 2
+    systemd:
+      daemon_reload: yes
+      enabled: yes
+      name: synology-inotify
+      scope: user
+      state: restarted
+    become: yes
+    become_user: jik
+    when: script_changed.changed
+
+  # /usr/lib/systemd/system-sleep works if wake-on-wlan is enabled, because when
+  # WoWLAN is enabled the WiFi interface stays up all the way until the machine
+  # suspends. It does NOT work when WoWLAN is disabled, because NetworkManager
+  # starts disabling network interfaces as soon as the suspend signal comes in,
+  # before the scripts in system-sleep finish running.
+  #
+  # In contrast, /etc/NetworkManager/dispatcher.d/pre-down.d works when WoWLAN
+  # is disabled, but it does NOT work when WowLAN is enabled, because pre-down.d
+  # scripts don't get called in that context (which is arguably a bug, but
+  # :shrug:).
+  #
+  # Therefore, I'm putting the sleep script in the system-sleep directory AND
+  # in the dispatcher.d directory, so that the right thing will happen whether
+  # or not WowLAN is enabled.
+  - name: install sleep script
+    template:
+      src: sleep-script
+      dest: /usr/lib/systemd/system-sleep/inotify-canary
+      mode: 0755
+    vars:
+      canary_id: "{{synology_inotify_canary|regex_replace('.*id=', '')}}"
+
+  - name: install dispatcher.d link for sleep script
+    file:
+      src: /usr/lib/systemd/system-sleep/inotify-canary
+      dest: /etc/NetworkManager/dispatcher.d/pre-down.d/inotify-canary
+      state: link
+
+  - name: install pre-down.d link for sleep script
+    file:
+      src: /usr/lib/systemd/system-sleep/inotify-canary
+      dest: /etc/NetworkManager/dispatcher.d/inotify-canary
+      state: link
+
+  - name: install shutdown unit file
+    copy:
+      dest: /etc/systemd/system/inotify-canary-pause.service
+      content: |
+        [Unit]
+        Description=Pause inotify canary on shutdown
+        Wants=network-online.target
+        After=network-online.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/etc/NetworkManager/dispatcher.d/inotify-canary post inotify-canary-pause.service
+        ExecStop=/etc/NetworkManager/dispatcher.d/inotify-canary pre inotify-canary-pause.service
+
+        [Install]
+        WantedBy=multi-user.target
+    register: shutdown_unit_file
+
+  - name: enable and start shutdown service, try 1
+    systemd:
+      daemon_reload: yes
+      enabled: yes
+      name: inotify-canary-pause
+      state: started
+    when: not shutdown_unit_file.changed
+
+  - name: enable and start shutdown service, try 2
+    systemd:
+      daemon_reload: yes
+      enabled: yes
+      name: inotify-canary-pause
+      state: restarted
+    when: shutdown_unit_file.changed

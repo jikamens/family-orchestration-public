@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+
+mypid=$$
+rundir=/var/run/inotify-canary
+
+mkdir -p $rundir
+
+paused_file=$rundir/paused
+pause_success_file=$rundir/pause-succeeded
+unpause_success_file=$rundir/unpause-succeeded
+
+echo "$0: starting with args $*"
+
+if [ "$1" != "pre" -a "$1" != "post" ]; then
+    if [ "$(basename $(dirname "$0"))" == "pre-down.d" ]; then
+        echo "$0: pause mode" 1>&2
+        set pre NetworkManager pre-down.d
+    elif [ "$(basename $(dirname "$0"))" == "dispatcher.d" -a "$2" == "down" ]
+    then
+        echo "$0: pause mode" 1>&2
+        set pre NetworkManager dispatcher.d
+    elif [ "$(basename $(dirname "$0"))" == "dispatcher.d" -a "$2" == "up" ]
+    then
+        echo "$0: unpause mode" 1>&2
+        set post NetworkManager dispatcher.d
+    else
+        echo "$0: don't know what to do, exiting" 1>&2
+        exit 1
+    fi
+fi
+
+canary={{canary_id}}
+
+cmcli() {
+    if /usr/local/bin/cmcli "$@"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+is_paused() {
+    local stateless tries
+    stateless=false
+    tries=10
+    while [ -n "$1" ]; do
+        case "$1" in
+            "--stateless") stateless=true; shift ;;
+            *) tries="$1"; shift ;;
+        esac
+    done
+    if $stateless; then
+        rm -f "$paused_file"
+    elif [ -f "$paused_file" ]; then
+        return 0
+    fi
+    while :; do
+        # Connectivity check, so we redirect stderr to /dev/null because we
+        # don't want to log all the noise when it fails because the network is
+        # down.
+        if ! cmcli list --paused >| /tmp/cmcli.$$ 2>/tmp/cmcli-error.$$; then
+            echo "$0: cmcli list failed (/tmp/cmcli-error.$$)" 1>&2
+            if ((--tries)); then
+                echo "$0: sleeping" 1>&2
+                sleep 1
+                continue
+            else
+                echo "$0: giving up" 1>&2
+                exit 1
+            fi
+        fi
+        if grep -q -s $canary /tmp/cmcli.$$; then
+            retval=0
+            if ! $stateless; then
+                touch "$paused_file"
+            fi
+        else
+            retval=1
+            if ! $stateless; then
+                rm -f "$paused_file"
+            fi
+        fi
+        rm -f /tmp/cmcli.$$ /tmp/cmcli-error.$$
+        return $retval
+    done
+}
+
+if [ "$1" == "pre" ]; then
+    if is_paused 1; then
+        echo "$0: aleady paused" 1>&2
+        exit 0
+    else
+        echo "$0: pausing"
+        if ! cmcli pause --terse --id "$canary" --comment "$0 $*"; then
+            echo "$0: cmcli pause failed" 1>&2
+            exit 1
+        fi
+        touch "$pause_success_file"
+        echo "$0: finished pausing successfully"
+        exit 0
+    fi
+elif [ "$1" == "post" ]; then
+    (
+        echo "$0: forked from $mypid"
+        if is_paused --stateless; then
+            echo "$0: unpausing"
+            if ! cmcli unpause --terse --id "$canary" --comment "$0 $*"; then
+                echo "$0: cmcli unpause failed" 1>&2
+                exit 1
+            fi
+            touch "$unpause_success_file"
+            echo "$0: finished unpausing successfully"
+            exit 0
+        else
+            echo "$0: already unpaused" 1>&2
+            exit 0
+        fi
+    ) &
+fi

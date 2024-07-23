@@ -1,0 +1,222 @@
+- hosts: desktops
+  tasks:
+  - name: get secrets
+    include_vars: ../secrets.yml
+
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: create ~/.config/user-tmpfiles.d
+    file:
+      path: /home/jik/.config/user-tmpfiles.d
+      state: directory
+      owner: jik
+      group: jik
+  
+  - name: create ~/.config/user-tmpfiles.d/emacs-browse-url.conf
+    copy:
+      dest: /home/jik/.config/user-tmpfiles.d/emacs-browse-url.conf
+      content: |
+        d /home/jik/public_html/tmp - - - 10d
+      owner: jik
+      group: jik
+
+  - name: create ~/public_html/tmp
+    command: systemd-tmpfiles --user --create
+    args:
+      creates: /home/jik/public_html/tmp
+    become: true
+    become_user: jik
+
+  - name: create chrome policies directory
+    file: path=/etc/opt/chrome/policies/managed state=directory
+
+  - name: disable 1Password (only used on Numerated Mac)
+    copy:
+      dest: /etc/opt/chrome/policies/managed/block1pw.json
+      content: |
+        {
+          "ExtensionSettings": {
+            "aeblfdkhhhdcdjpifhhbdiojplfjncoa": {
+              "installation_mode": "blocked"
+            }
+          }
+        }
+
+  - name: install APT trigger to maintain emacs customizations
+    copy:
+      dest: /etc/apt/apt.conf.d/jik-fix-emacs
+      content: |
+        Dpkg::Post-Invoke {"if [ -f /usr/share/applications/emacsclient.desktop ]; then cd /home/jik/src/family-orchestration && ansible-playbook desktops/apt_fix_emacs.yml; fi"};
+
+  - name: Install ~/.screenrc
+    copy:
+      dest: /home/jik/.screenrc
+      mode: 0444
+      owner: jik
+      group: jik
+      content: |
+        # no annoying audible bell, please
+        vbell on
+        # detach on hangup
+        autodetach on
+        # don't display the copyright page
+        startup_message off
+        # emulate .logout message
+        pow_detach_msg "Screen session of \$LOGNAME \$:cr:\$:nl:ended."
+
+        defscrollback 1000
+
+        #remove some stupid / dangerous key bindings
+        bind k
+        bind ^k
+        bind .
+        bind ^\
+        bind \\
+        bind ^h
+        bind h
+        #make them better
+        bind 'K' kill
+        bind 'I' login on
+        bind 'O' login off
+        bind '}' history
+
+        escape ^\^\
+        bindkey -d -k kb
+        utf8 on on
+        hardstatus string "%H (screen)"
+
+  - name: configure .coal-mine.ini for jik
+    ini_file:
+      path: /home/jik/.coal-mine.ini
+      section: coal-mine
+      option: '{{item[0]}}'
+      value: '{{item[1]}}'
+      owner: jik
+      group: jik
+      mode: 0600
+    with_list:
+    - ["host", "{{coal_mine_host}}"]
+    - ["auth-key", "{{coal_mine_auth_key}}"]
+
+  - name: configure .coal-mine.ini for root
+    copy:
+      remote_src: true
+      src: /home/jik/.coal-mine.ini
+      dest: /root/.coal-mine.ini
+      owner: root
+      group: root
+      mode: 0600
+
+  - name: include fix Emacs fragment
+    include_tasks: ../fragments/fix_emacs.yml
+
+  - name: Create ~/.config/GIMP
+    file:
+      path: /home/jik/.config/GIMP
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: Create ~/.config/GIMP/2.10
+    file:
+      path: /home/jik/.config/GIMP/2.10
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: gimprc customizations
+    lineinfile:
+      path: /home/jik/.config/GIMP/2.10/gimprc
+      create: yes  # doesn't get created automatically by gimp
+      owner: jik
+      group: jik
+      insertbefore: end of gimprc
+      line: "{{item[0]}}"
+      regexp: "{{item[1]}}"
+    with_list:
+    - ["(resize-windows-on-zoom yes)", "resize-windows-on-zoom (yes|no)"]
+    - ["(resize-windows-on-resize yes)", "resize-windows-on-resize (yes|no)"]
+    - ["(can-change-accels yes)", "can-change-accels (yes|no)"]
+    - ["(toolbox-groups no)", "toolbox-groups (yes|no)"]
+
+  - name: gimp menurc customizations
+    lineinfile:
+      path: /home/jik/.config/GIMP/2.10/menurc
+      create: yes
+      owner: jik
+      group: jik
+      insertbefore: end of gimprc
+      line: "{{item[0]}}"
+      regexp: "{{item[1]}}"
+    with_list:
+    - ['(gtk_accel_path "<Actions>/view/view-zoom-in" "equal")',
+       '"<Actions>/view/view-zoom-in"']
+    - ['(gtk_accel_path "<Actions>/layers/layers-merge-down" "<Alt>d")',
+       '"<Actions>/layers/layers-merge-down"']
+    - ['(gtk_accel_path "<Actions>/plug-in/file-print-gtk" "<Primary>p")',
+       '"<Actions>/plug-in/file-print-gtk"']
+
+  - name: read agenda config JSON
+    slurp: src=/home/jik/.agenda-config.json
+    failed_when: false
+    register: contents
+
+  - name: initialize empty agenda config
+    set_fact:
+      file_agenda_config: {}
+    when: "'content' not in contents"
+
+  - name: parse agenda config
+    set_fact: file_agenda_config={{contents.content|b64decode|from_json}}
+    when: "'content' in contents"
+
+  - name: snapshot agenda config
+    set_fact: agenda_snapshot={{file_agenda_config|to_nice_json}}
+
+  - name: update agenda config in memory
+    set_fact:
+      file_agenda_config: "{{file_agenda_config|combine(agenda_config)}}"
+
+  - name: snapshot agenda config again
+    set_fact: new_agenda_snapshot={{file_agenda_config|to_nice_json}}
+
+  - name: save updated agenda config
+    copy:
+      dest: /home/jik/.agenda-config.json
+      owner: jik
+      group: jik
+      content: "{{new_agenda_snapshot}}"
+      follow: true
+    when: agenda_snapshot != new_agenda_snapshot
+
+  - name: Create Flameshot configuration directory
+    file:
+      path: /home/jik/.config/flameshot
+      owner: jik
+      group: jik
+
+  - name: Configure Flameshot
+    ini_file:
+      path: /home/jik/.config/flameshot/flameshot.ini
+      owner: jik
+      group: jik
+      section: General
+      option: "{{item[0]}}"
+      value: "{{item[1]}}"
+      no_extra_spaces: true
+    with_list:
+    - ['copyPathAfterSave', 'true']
+    - ['showHelp', 'false']
+    - ['showStartupLaunchMessage', 'false']
+    - ['startupLaunch', 'true']
+
+- import_playbook: synology-inotify/synology-inotify.yml
+- import_playbook: jik-customizations/gnucash.yml
+- import_playbook: jik-customizations/gnome-shell-extensions.yml
+- import_playbook: jik-customizations/gnome-shell.yml
+- import_playbook: jik-customizations/favorites.yml
+- import_playbook: jik-customizations/thunderbird.yml
+- import_playbook: jik-customizations/rdp.yml
+- import_playbook: jik-customizations/gitconfig.yml
+- import_playbook: jik-customizations/debian-packaging.yml

@@ -1,0 +1,49 @@
+---
+- hosts: jik6
+  remote_user: root
+  tasks:
+  - name: install bind9
+    apt:
+      name:
+      - bind9
+  - name: suppress inclusion of default zones
+    replace:
+      dest=/etc/bind/named.conf
+      backup=yes
+      regexp='^(\s*include\s+.*default-zones)'
+      replace='// \1'
+    register: nodefaultzones
+  - name: turn off zone notify
+    lineinfile:
+      dest=/etc/bind/named.conf.options
+      insertbefore='};'
+      regexp='^\s*notify\s+no\s*;'
+      line='  notify no;'
+  - name: install master.{{home_domain}}
+    copy:
+      backup=yes
+      dest=/etc/bind/master.{{home_domain}}
+      group=bind
+      src=master.{{home_domain}}
+    register: masterkamens
+  - name: install master.4.168.192.in-addr.arpa
+    copy:
+      backup=yes
+      dest=/etc/bind/master.4.168.192.in-addr.arpa
+      group=bind
+      src=master.4.168.192.in-addr.arpa
+    register: master4
+  - name: install named.conf.local
+    template:
+      backup: yes
+      dest: /etc/bind/named.conf.local
+      group: bind
+      src: named.conf.local
+    register: namedconflocal
+  - name: enable and restart named
+    service: name=named enabled=yes state=restarted
+    when: nodefaultzones.changed or namedconflocal.changed or
+          masterkamens.changed or master4.changed
+  - name: configure ufw to allow DNS traffic
+    ufw: rule=allow name=Bind9
+

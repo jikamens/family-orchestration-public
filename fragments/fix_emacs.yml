@@ -1,0 +1,14 @@
+- name: delete unwanted Emacs desktop icons
+  file:
+    path: /usr/share/applications/{{item}}
+    state: absent
+  with_items:
+  - emacs-term.desktop
+  - emacsclient.desktop
+  - emacsclient-mail.desktop
+
+- name: force window geometry in emacs.desktop
+  lineinfile:
+    path: /usr/share/applications/emacs.desktop
+    line: Exec=/usr/bin/emacs -g 80x35 %F
+    regexp: ^Exec=

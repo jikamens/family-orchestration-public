@@ -1,0 +1,62 @@
+view "unrestricted" {
+  match-destinations { 192.168.4.17; 127.0.0.1; };
+
+  # I already restrict at the Firewall, so queries are OK if they're on the
+  # network.
+  allow-query { any; };
+  allow-recursion { any; };
+  
+  # Can't get big enough packets through my router
+  edns-udp-size 487;
+  max-udp-size 487;
+  dnssec-validation no;
+
+  forwarders { 8.8.8.8; 1.1.1.1; };
+  forward only;
+
+  zone "{{home_domain}}" {
+    type master;
+    file "/etc/bind/master.{{home_domain}}";
+  };
+
+  zone "4.168.192.in-addr.arpa" {
+    type master;
+    file "/etc/bind/master.4.168.192.in-addr.arpa";
+  };
+
+  include "/etc/bind/named.conf.default-zones";
+  include "/etc/bind/zones.rfc1918";
+};
+
+view "opendns" IN {
+  # OpenDNS
+
+  # 10.8.0.0/24 is the VPN hosted on our AX6000 router.
+  match-clients { 192.168.0.0/16; 10.8.0.0/24; };
+
+  # I already restrict at the Firewall, so queries are OK if they're on the
+  # network.
+  allow-query { any; };
+  allow-recursion { any; };
+  
+  # Can't get big enough packets through my router
+  edns-udp-size 487;
+  max-udp-size 487;
+  dnssec-validation no;
+
+  forwarders { {{opendns_primary}}; {{opendns_secondary}}; };
+  forward only;
+
+  zone "{{home_domain}}" {
+    type master;
+    file "/etc/bind/master.{{home_domain}}";
+  };
+
+  zone "4.168.192.in-addr.arpa" {
+    type master;
+    file "/etc/bind/master.4.168.192.in-addr.arpa";
+  };
+
+  include "/etc/bind/named.conf.default-zones";
+  include "/etc/bind/zones.rfc1918";
+};

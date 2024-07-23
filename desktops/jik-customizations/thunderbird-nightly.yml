@@ -1,0 +1,39 @@
+- hosts: desktops
+  gather_facts: no
+  vars:
+    nightly_dir: https://ftp.mozilla.org/pub/thunderbird/nightly/latest-comm-central/
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: create tb-nightly directory
+    file:
+      path: /home/jik/bin/tb-nightly
+      state: directory
+      owner: jik
+      group: jik
+
+  - name: get name of TB nightly file name
+    shell: curl --silent "{{nightly_dir}}" | tr '<>' '\n' | grep 'linux-x86_64\.tar\.bz2$' | tail -1
+    register: nightlynamecmd
+    changed_when: false
+
+  - name: set URL of TB nightly file
+    set_fact:
+      nightlyname: nightnamecmd.stdout
+      nightlyurl: "{{nightly_dir}}{{nightlynamecmd.stdout}}"
+
+  - name: download TB nightly
+    get_url:
+      dest: /tmp/{{nightlyname}}
+      url: "{{nightlyurl}}"
+      force: true
+
+  - name: untar TB nightly
+    unarchive:
+      dest: /home/jik/bin/tb-nightly
+      src: "/tmp/{{nightlyname}}"
+      extra_opts: ["--strip-components=1"]
+      owner: jik
+      group: jik

@@ -1,0 +1,21 @@
+---
+- name: disable dnsmasq
+  hosts: jik6
+  tasks:
+    - name: disable dnsmasq in NetworkManager configuration
+      ini_file:
+        dest: /etc/NetworkManager/NetworkManager.conf
+        section: main
+        option: dns
+        value: default
+      register: nmdns
+    - name: set rc-manager in NetworkManager configuration
+      ini_file:
+        dest: /etc/NetworkManager/NetworkManager.conf
+        section: main
+        option: rc-manager
+        value: resolvconf
+      register: nmrcmanager
+    - name: restart NetworkManager
+      when: nmdns.changed or nmrcmanager.changed
+      service: name=NetworkManager state=restarted

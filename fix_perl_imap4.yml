@@ -1,0 +1,15 @@
+- hosts: jik_hosts
+  tasks:
+  - name: find IMAP4.pm files to patch
+    find:
+      paths: [ '/usr/share/perl5', '/usr/local/share/perl5' ]
+      patterns: [ 'IMAP4.pm' ]
+      recurse: true
+    register: found
+
+  - name: patch IMAP4.pm files
+    ansible.posix.patch:
+      dest: "{{item}}"
+      src: IMAP4.patch
+    with_items: "{{ found['files'] | map(attribute='path') | map('regex_search', '.*/Box/.*') | select('string') }}"
+  

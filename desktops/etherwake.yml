@@ -1,0 +1,17 @@
+- hosts: laptops
+  gather_facts: false
+  tasks:
+  - name: check if etherwake is available
+    local_action: stat
+    args:
+      path: /usr/sbin/etherwake
+    register: etherwake
+
+  - name: send etherwake to laptops
+    local_action: command etherwake {{inventory_hostname}}
+    changed_when: false
+    when: etherwake.stat.exists
+
+  - name: wait for laptops to wake up
+    wait_for_connection:
+    when: etherwake.stat.exists

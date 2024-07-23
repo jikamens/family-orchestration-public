@@ -1,0 +1,183 @@
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: Enable night light
+    gsetting:
+      user: jik
+      key: org.gnome.settings-daemon.plugins.color.night-light-enabled
+      value: '{{"true"|string}}'
+
+  - name: Disable evolution-data-server calendar notifications
+    gsetting:
+      user: jik
+      settings:
+        org.gnome.evolution-data-server.calendar.contacts-reminder-enabled: "{{'false'|string}}"
+        org.gnome.evolution-data-server.calendar.notify-completed-tasks: "{{'false'|string}}"
+        org.gnome.evolution-data-server.calendar.notify-enable-audio: "{{'false'|string}}"
+        org.gnome.evolution-data-server.calendar.notify-enable-display: "{{'false'|string}}"
+        org.gnome.evolution-data-server.calendar.notify-past-events: "{{'false'|string}}"
+        org.gnome.evolution-data-server.calendar.notify-with-tray: "{{'true'|string}}"
+
+  - name: set sloppy focus
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.wm.preferences.focus-mode
+      value: "{{\"'sloppy'\"|string}}"
+
+  - name: disable Trackpad natural scrolling
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.peripherals.touchpad.natural-scroll
+      value: "{{'false'|string}}"
+
+  - name: enable Trackpad corner click
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.peripherals.touchpad.click-method
+      value: "{{\"'areas'\"|string}}"
+
+  - name: enable touchpad disable-while-typing
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.peripherals.touchpad.disable-while-typing
+      value: "{{'true'|string}}"
+
+  - name: enable touchpad send-events (required for disable-while-typing)
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.peripherals.touchpad.send-events
+      value: "{{\"'enabled'\"|string}}"
+
+  - name: disable touchpad tap to click
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.peripherals.touchpad.tap-to-click
+      value: "{{'false'|string}}"
+
+  - name: minimize and maximize buttons in title bars
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.wm.preferences.button-layout
+      value: "{{\"'appmenu:minimize,maximize,close'\"|string}}"
+
+  - name: configure weekday and seconds in clock in top bar
+    gsetting:
+      user: jik
+      settings:
+        org.gnome.desktop.interface.clock-show-seconds: "{{'true'|string}}"
+        org.gnome.desktop.interface.clock-show-weekday: "{{'true'|string}}"
+      
+  - name: show battery percentage in top bar
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.interface.show-battery-percentage
+      value: "{{'true'|string}}"
+
+  - name: disable hot corners
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.interface.enable-hot-corners
+      value: "{{'false'|string}}"
+
+  - name: configure deleting old trash and temporary files
+    gsetting:
+      user: jik
+      settings:
+        org.gnome.desktop.privacy.remove-old-temp-files: "{{'true'|string}}"
+        org.gnome.desktop.privacy.remove-old-trash-files: "{{'true'|string}}"
+      
+  - name: disable GNOME Calendar notifications
+    dconf:
+      key: /org/gnome/desktop/notifications/application/org-gnome-calendar/{{item}}
+      value: false
+    become: true
+    become_user: jik
+    with_items:
+    - enable
+    - enable-sound-alerts
+    - show-banners
+
+  - name: disable mutter auto-maximize
+    dconf:
+      key: /org/gnome/mutter/auto-maximize
+      value: false
+    become: true
+    become_user: jik
+
+  - name: enable idle sleep on battery power
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-type
+      value: '"suspend"'
+    become: true
+    become_user: jik
+  
+  - name: sleep after 5 idle minutes on battery power
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-timeout
+      value: 600
+    become: true
+    become_user: jik
+
+  - name: don't sleep when idle on AC
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/sleep-inactive-ac-type
+      value: '"nothing"'
+    become: true
+    become_user: jik
+
+  - name: Erase default Print Screen keybinding
+    gsetting:
+      user: jik
+      schema: org.gnome.shell.keybindings
+      key: show-screenshot-ui
+      value: "['<Shift>Print']"
+
+  - name: Create Flameshot keybinding
+    gsetting:
+      user: jik
+      schema: org.gnome.settings-daemon.plugins.media-keys.custom-keybinding
+      path: /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/
+      settings:
+        name: "'Flameshot'"
+        binding: "'Print'"
+        command: "'flameshot gui'"
+
+  - name: Bind Flameshot keybinding
+    gsetting:
+      user: jik
+      key: org.gnome.settings-daemon.plugins.media-keys.custom-keybindings
+      value: "{{\"['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']\"|string}}"
+
+  # See https://github.com/flameshot-org/flameshot/issues/3326
+  - name: Check permissions for Flameshot keybinding
+    command: dbus-run-session dbus-send --session --print-reply=literal
+      --dest=org.freedesktop.impl.portal.PermissionStore
+      /org/freedesktop/impl/portal/PermissionStore
+      org.freedesktop.impl.portal.PermissionStore.Lookup string:'screenshot'
+      string:'screenshot'
+    become: true
+    become_user: jik
+    changed_when: false
+    failed_when: false
+    register: flameshot_dbus
+
+  # If this fails in Ansible then run it by hand in a GNOME terminal.
+  - name: Set permissions for Flameshot keybinding
+    command: dbus-run-session dbus-send --session --print-reply=literal
+      --dest=org.freedesktop.impl.portal.PermissionStore
+      /org/freedesktop/impl/portal/PermissionStore
+      org.freedesktop.impl.portal.PermissionStore.Lookup string:'screenshot'
+      string:'screenshot'
+    become: true
+    become_user: jik
+    when: "'flameshot' not in flameshot_dbus.stdout"
+
+  - name: Right alt key as compose key
+    gsetting:
+      user: jik
+      key: org.gnome.desktop.input-sources.xkb-options
+      value: "{{\"['compose:ralt']\"|string}}"

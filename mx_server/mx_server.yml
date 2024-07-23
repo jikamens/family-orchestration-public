@@ -1,0 +1,152 @@
+---
+- hosts: mx_servers
+  tasks:
+  - name: set hostname
+    hostname: name='{{inventory_hostname}}'
+  - name: disable SSH password authentication
+    lineinfile:
+      dest: /etc/ssh/sshd_config
+      regexp: ^\s*PasswordAuthentication
+      line: PasswordAuthentication no
+    register: sshd_pwauth
+  - name: install mx.{{email_domain}} line in /etc/hosts
+    lineinfile:
+      dest: /etc/hosts
+      line: 127.0.1.1 mx.{{email_domain}} mx
+  - name: configure Port 22 in sshd_config
+    lineinfile:
+      dest: /etc/ssh/sshd_config
+      regexp: ^\s*Port\s+22\s*$
+      line: Port 22
+    register: sshd_port22
+  - name: configure Port 2222 in sshd_config
+    lineinfile:
+      dest: /etc/ssh/sshd_config
+      regexp: ^\s*Port\s+2222\s*$
+      line: Port 2222
+    register: sshd_port2222
+  - name: disable SSH root password logins
+    lineinfile:
+      dest: /etc/ssh/sshd_config
+      regexp: ^\s*PermitRootLogin
+      line: PermitRootLogin prohibit-password
+    register: sshd_rootlogin
+  - name: restart sshd
+    service: name=sshd state=restarted
+    when: sshd_pwauth.changed or sshd_port22.changed or
+          sshd_port2222.changed or sshd_rootlogin.changed
+  - name: install packages
+    apt:
+      name:
+      - emacs
+      - postfix
+      - ntp
+      - logwatch
+      - fail2ban
+  - name: enable and start NTP
+    service: name=ntp enabled=yes state=started
+  - name: install root mail alias
+    lineinfile:
+      dest: /etc/aliases
+      regexp: '^\s*root:'
+      line: 'root: root@{{email_domain}}'
+    register: rootalias
+  - name: run newaliases
+    command: newaliases
+    when: rootalias.changed
+  - name: install /etc/postfix/virtual_domains.txt
+    copy:
+      dest: /etc/postfix/virtual_domains.txt
+      content: |
+        {{andrea_domain}}
+        {{mtm_domain}}
+        {{home_domain}}
+        {{email_domain2}}
+        {{email_domain3}}
+        {{email_domain}}
+        {{b8mb_domain}}
+    register: virtual_domains
+  - name: install /etc/postfix/transport
+    copy:
+      dest: /etc/postfix/transport
+      content: |
+        {{andrea_domain}} smtp:[email.{{email_domain}}]
+        {{mtm_domain}} smtp:[email.{{email_domain}}]
+        {{home_domain}} smtp:[email.{{email_domain}}]
+        {{email_domain2}} smtp:[email.{{email_domain}}]
+        {{email_domain3}} smtp:[email.{{email_domain}}]
+        {{email_domain}} smtp:[email.{{email_domain}}]
+        {{b8mb_domain}} smtp:[email.{{email_domain}}]
+    register: transport
+  - name: build postmap for /etc/postfix/transport
+    command: postmap /etc/postfix/transport
+    when: transport.changed
+    register: transport_postmap
+  - name: configure inet_interfaces in /etc/postfix/main.cf
+    lineinfile:
+      dest: /etc/postfix/main.cf
+      regexp: ^\s*inet_interfaces
+      line: inet_interfaces=all
+    register: inet_interfaces
+  - name: configure smtpd_recipient_restrictions in /etc/postfix/main.cf
+    lineinfile:
+      dest: /etc/postfix/main.cf
+      regexp: ^\s*smtpd_recipient_restrictions
+      line: smtpd_recipient_restrictions = permit_mynetworks,
+            reject_rbl_client zen.spamhaus.org, permit_mx_backup,
+            reject_unauth_destination
+    register: smtpd_recipient_restrictions
+  - name: configure virtual_mailbox_base in /etc/postfix/main.cf
+    lineinfile:
+      dest: /etc/postfix/main.cf
+      regexp: ^\s*virtual_mailbox_base
+      line: virtual_mailbox_base=/var/mail
+    register: virtual_mailbox_base
+  - name: configure virtual_mailbox_domains in /etc/postfix/main.cf
+    lineinfile:
+      dest: /etc/postfix/main.cf
+      regexp: ^\s*virtual_mailbox_domains
+      line: virtual_mailbox_domains=/etc/postfix/virtual_domains.txt
+    register: virtual_mailbox_domains
+  - name: configure transport_maps in /etc/postfix/main.cf
+    lineinfile:
+      dest: /etc/postfix/main.cf
+      regexp: ^\s*transport_maps
+      line: transport_maps=hash:/etc/postfix/transport
+    register: transport_maps
+  - name: restart postfix
+    service: name=postfix state=restarted
+    when: virtual_domains.changed or
+          transport_postmap.changed or
+          inet_interfaces.changed or
+          smtpd_recipient_restrictions.changed or 
+          virtual_mailbox_base.changed or
+          virtual_mailbox_domains.changed or
+          transport_maps.changed
+  - name: enable and start postfix
+    service: name=postfix enabled=yes state=started
+  - name: add logwatch filter line to sshd.conf
+    lineinfile:
+      dest: /usr/share/logwatch/default.conf/services/sshd.conf
+      line: '*Remove = (reverse mapping checking getaddrinfo .* failed|does not map back to the address)'
+  - name: add logwatch filter line to postfix.conf
+    lineinfile:
+      dest: /usr/share/logwatch/default.conf/services/postfix.conf
+      line: '*Remove = lost connection .* from unknown\[unknown\]|synacor.*Blacklisted by Internal Reputation Service'
+  - name: add logwatch filter line to xntpd.conf
+    lineinfile:
+      dest: /usr/share/logwatch/default.conf/services/xntpd.conf
+      line: '*Remove = (clock_sync|no_sys_peer|freq_mode|freq_set kernel [0-9.]+ PPM|(spike_detect|clock_step) \+[0-9.]+ s)$'
+  - name: enable ufw with default policy of deny
+    ufw: state=enabled policy=deny
+  - name: allow port 22 through ufw
+    ufw: rule=allow port=22
+  - name: allow port 2222 through ufw
+    ufw: rule=allow port=2222
+  - name: allow SMTP through ufw
+    ufw: rule=allow port=25
+  - name: allow SSL SMTP through ufw
+    ufw: rule=allow port=465
+  - name: enable and start fail2ban
+    service: name=fail2ban enabled=yes state=started
+

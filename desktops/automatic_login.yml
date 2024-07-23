@@ -1,0 +1,31 @@
+- name: enable automatic login
+  # For some inexplicable reason framework1l is behaving differently from my
+  # other computers, not prompting to unlock my login keyring upon boot, with
+  # the result that gnome remote desktop assigns a new, random password on each
+  # reboot. Until we figure out why that's happening we need to disable
+  # automatic login on framework1l (and remember to log in with a password
+  # instead of the fingerprint reader!) so that the remote desktop password
+  # doesn't get reset. See
+  # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1055108 .
+  hosts: desktops,!framework1l
+  tasks:
+  - name: check for /etc/gdm3/daemon.conf
+    stat: path=/etc/gdm3/daemon.conf
+    register: daemonconf
+
+  - name: set gdm3 config file
+    set_fact: config_file="{{daemonconf.stat.path if daemonconf.stat.exists
+      else '/etc/gdm3/custom.conf'}}"
+
+  - name: enable automatic login
+    ini_file:
+      path: "{{config_file}}"
+      section: daemon
+      option: AutomaticLoginEnable
+      value: true
+  - name: configure automatic login username
+    ini_file:
+      path: "{{config_file}}"
+      section: daemon
+      option: AutomaticLogin
+      value: jik

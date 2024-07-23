@@ -1,0 +1,32 @@
+#!/bin/bash -e
+
+user=jik
+OF=/home/$user/.ssh/config.auto_proxy
+INTERNAL_HOSTS="{{groups['laptops'] | join(' ')}}"
+DOMAIN={{email_domain}}
+HOME_CONNECTION={{home_network}}
+PROXY={{ssh_proxy}}.{{email_domain}}
+
+echo "$0 $* start"
+
+if [ "$2" != "connectivity-change" ]; then
+    echo "$0 $* abort"
+    exit
+fi
+
+tf=$OF.new
+cp /dev/null $tf
+chown $user:$user $tf
+if nmcli connection show --active | grep "^$HOME_CONNECTION"; then
+    mv -f $tf $OF
+    echo "$0 $* at home"
+    exit
+fi
+for host in $INTERNAL_HOSTS; do
+    if [ "$host" != "$HOSTNAME" ]; then
+        echo "Host $host $host.$DOMAIN" >> $tf
+        echo "  ProxyJump $PROXY" >> $tf
+    fi
+done
+mv -f $tf $OF
+echo "$0 $* proxied"

@@ -1,0 +1,27 @@
+---
+- hosts: mod_relay_1
+  tasks:
+  - name: configure IPV6 gateway
+    lineinfile:
+      dest: /etc/systemd/network/05-eth0.network
+      line: Gateway=fe80::1
+  - name: configure IPV6 address 1
+    lineinfile:
+      dest: /etc/systemd/network/05-eth0.network
+      line: Address=2600:3c00::f03c:91ff:fe1a:cc5e/64
+  - name: configure IPV6 address 2
+    lineinfile:
+      dest: /etc/systemd/network/05-eth0.network
+      line: Address=2600:3c00:e000:021b::1/64
+  - name: install emacs and mlocate
+    apt: 
+      name:
+      - emacs
+      - mlocate
+  - name: fix modes of /etc/cron.daily/plocate
+    file: name=/etc/cron.daily/plocate mode=0755
+  - name: Disable phased updates
+    copy:
+      dest: /etc/apt/apt.conf.d/disable-phased-updates
+      content: APT::Get::Always-Include-Phased-Updates true;
+- import_playbook: mod-relay/mod-relay.yml

@@ -1,0 +1,8 @@
+---
+- hosts: desktops
+  tasks:
+  - name: Configure a2ps to output to file by default
+    lineinfile:
+      path: /etc/a2ps-site.cfg
+      line: 'DefaultPrinter: > $N.#.'
+      regexp: '^DefaultPrinter:'

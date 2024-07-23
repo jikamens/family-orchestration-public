@@ -1,0 +1,1017 @@
+- hosts: desktops
+  tasks:
+  # Needs to happen first so snap support code is available later
+  - name: ansible apt repository from ppa
+    apt_repository:
+      filename: /etc/apt/sources.list.d/ansible
+      repo: ppa:ansible/ansible
+      codename: noble
+    register: ansiblerepo
+
+  - name: update apt metadata after adding repositories
+    command: apt update
+    changed_when: False
+    when: ansiblerepo.changed
+
+  - name: install ansible from ansible repo
+    apt: name=ansible state=latest
+
+  - name: Debian experimental repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/experimental
+      repo: 'deb https://deb.debian.org/debian experimental main'
+      update_cache: no
+
+- hosts: debian_desktops
+  tasks:
+  - name: Uninstall firefox-esr
+    apt: name=firefox-esr state=absent
+
+  - name: install Debian-specific packages
+    apt:
+      name:
+      - chromium
+      - chromium-driver
+      - gnome-shell-extension-dashtodock
+
+  - name: install bookworm stable repositories for compat
+    copy:
+      dest: /etc/apt/sources.list.d/debian-stable.list
+      content: |
+        deb [arch=amd64] http://deb.debian.org/debian/ stable main non-free-firmware contrib non-free
+        deb [arch=amd64] http://security.debian.org/debian-security stable-security main non-free-firmware contrib non-free
+        deb [arch=amd64] http://deb.debian.org/debian/ stable-updates main non-free-firmware contrib non-free
+    register: debianstable
+
+  - name: update apt metadata after adding repositories
+    command: apt update
+    changed_when: False
+    when: debianstable.changed
+
+- name: install all the things
+  hosts: desktops
+  tasks:
+
+  # Need newest SSL certs or toolbelt apt key download fails
+  - name: update apt metadata
+    command: apt update
+    changed_when: False
+
+  - name: update out-of-date-packages (first time)
+    apt: upgrade=dist
+
+  - name: Mozilla APT key
+    apt_key:
+      keyring: /etc/apt/trusted.gpg.d/mozilla.gpg
+      id: 35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3
+      url: https://packages.mozilla.org/apt/repo-signing-key.gpg
+
+  - name: Mozilla APT repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/mozilla
+      repo: "deb https://packages.mozilla.org/apt mozilla main"
+      update_cache: no
+    register: mozilla_repo
+
+  - name: FirefoxPWA apt key
+    apt_key:
+      url: https://packagecloud.io/filips/FirefoxPWA/gpgkey
+      keyring: /etc/apt/trusted.gpg.d/firefoxpwa.gpg
+
+  - name: FirefoxPWA apt repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/firefoxpwa
+      repo: 'deb [signed-by=/etc/apt/trusted.gpg.d/firefoxpwa.gpg] https://packagecloud.io/filips/FirefoxPWA/any any main'
+      update_cache: no
+    register: firefoxpwa_repo
+
+  - name: virtualbox apt key
+    apt_key:
+      url: https://www.virtualbox.org/download/oracle_vbox_2016.asc
+      keyring: /etc/apt/trusted.gpg.d/virtualbox.gpg
+      id: B9F8D658297AF3EFC18D5CDFA2F683C52980AECF
+
+  - name: virtualbox apt repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/virtualbox
+      repo: '{{virtualbox_repo}}'
+
+  - name: mongodb apt key
+    apt_key:
+      url: '{{mongodb_key}}'
+      keyring: /etc/apt/trusted.gpg.d/mongodb.gpg
+
+  - name: mongodb apt repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/mongodb
+      repo: '{{mongodb_repo}}'
+      update_cache: no
+    register: aptmongodb
+
+  - name: signal apt key
+    apt_key:
+      url: https://updates.signal.org/desktop/apt/keys.asc
+      keyring: /etc/apt/trusted.gpg.d/signal.gpg
+
+  - name: signal apt repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/signal
+      repo: '{{signal_repo}}'
+      update_cache: no
+    register: aptsignal
+
+  - name: slack apt key
+    apt_key:
+      keyring: /etc/apt/trusted.gpg.d/slack.gpg
+      data: |
+        -----BEGIN PGP PUBLIC KEY BLOCK-----
+        Version: GnuPG v1.4.11 (GNU/Linux)
+
+        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
+        lIs=
+        =ZPAR
+        -----END PGP PUBLIC KEY BLOCK-----
+
+  - name: slack repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/slack
+      repo: 'deb https://packagecloud.io/slacktechnologies/slack/debian/ jessie main'
+      update_cache: no
+    register: aptslack
+
+  - name: keybase apt key
+    apt_key:
+      url: https://keybase.io/docs/server_security/code_signing_key.asc
+      keyring: /etc/apt/trusted.gpg.d/keybase.gpg
+
+  - name: keybase repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/keybase
+      repo: 'deb [arch=amd64] http://prerelease.keybase.io/deb stable main'
+      update_cache: no
+    register: aptkeybase
+
+  # Google Chrome
+  - name: chrome apt key
+    apt_key:
+      url: https://dl-ssl.google.com/linux/linux_signing_key.pub
+      # The Chrome deb stores its own key in google-chrome.gpg, and it's
+      # different from the key in the URL advertised above, so we put ours in
+      # a different file name so we don't keep conflicting with each other,
+      # which would cause a bunch of spurious 'changed' messages to show up
+      # in ansible-playbook output.
+      keyring: /etc/apt/trusted.gpg.d/google-chrome-ansible.gpg
+  - name: chrome apt repository
+    apt_repository:
+      repo: 'deb [arch=amd64] https://dl.google.com/linux/chrome/deb/ stable main'
+      update_cache: no
+      filename: /etc/apt/sources.list.d/google-chrome
+    register: chromerepo
+
+  - name: allow RSA 1024 apt repositories, for google-drive-ocamlfuse
+    copy:
+      dest: /etc/apt/apt.conf.d/public-key-algo
+      content: APT::Key::Assert-Pubkey-Algo ">=rsa1024,>=nistp256";
+
+  - name: google-drive-ocamlfuse repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/google_drive_ocamlfuse
+      repo: ppa:alessandro-strada/ppa
+      # This is necessary because there are no Debian releases in this PPA.
+      codename: noble
+      update_cache: no
+    register: ocamlfuserepo
+
+  - name: check if graphics card is nvidia
+    shell: lspci | grep -q -s -i nvidia
+    ignore_errors: yes
+    changed_when: False
+    failed_when: False
+    register: nvidia_status
+
+  - name: install nvidia package
+    apt: name='nvidia-{{nvidia_version}}'
+    when: nvidia_status.rc == 0
+
+  - name: disable nouveau modeset so nvidia driver loads
+    copy:
+      dest: /etc/modprobe.d/nouveau-modeset.conf
+      content: |
+        options nouveau modeset=0
+    when: nvidia_status.rc == 0
+
+  - name: node apt key
+    apt_key:
+      url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+      keyring: /etc/apt/trusted.gpg.d/node.gpg
+
+#   - name: node apt repository
+#     apt_repository:
+# #      repo: 'deb https://deb.nodesource.com/node_11.x {{ansible_distribution_release}} main'
+#       repo: 'deb https://deb.nodesource.com/node_11.x eoan main'
+#       update_cache: no
+#     register: noderepo
+
+#   - name: node apt src repository
+#     apt_repository:
+# #      repo: 'deb-src https://deb.nodesource.com/node_11.x {{ansible_distribution_release}} main'
+#       repo: 'deb-src https://deb.nodesource.com/node_11.x eoan main'
+#       update_cache: no
+#     register: nodesrcrepo
+
+  - name: update apt metadata after adding repositories
+    command: apt update
+    changed_when: False
+    when: False
+       or chromerepo.changed or aptslack.changed or aptsignal.changed
+       or aptkeybase.changed
+       or ocamlfuserepo.changed
+       or aptmongodb.changed
+       or firefoxpwa_repo.changed
+       or mozilla_repo.changed
+#      or noderepo.changed or nodesrcrepo.changed
+
+  - name: accept ttf-mscorefonts-installer license
+    debconf:
+      name: ttf-mscorefonts-installer
+      question: msttcorefonts/accepted-mscorefonts-eula
+      value: 'true'
+      vtype: 'boolean'
+
+  - name: uninstall unattended-upgrades (I upgrade stuff by hand)
+    apt: state=absent name=unattended-upgrades
+
+  - name: uninstall peer-to-peer clients
+    apt:
+      state: absent
+      name:
+      - transmission
+      - transmission-common
+      - transmission-gtk
+
+  - name: uninstall deja-dup backups application
+    apt: state=absent name=deja-dup
+
+  - name: uninstall synaptics input driver
+    apt: name='xserver-xorg-input-synaptics' state='absent'
+
+  - name: uninstall xournal in favor of xournalpp
+    apt: name=xournal state=absent
+
+  - name: uninstall firefox-mozilla-build in favor of firefox from Mozilla
+    apt: name=firefox-mozilla-build state=absent
+
+  - name: install a ton of packages
+    apt:
+      name:
+      - ocrmypdf
+      - reportbug
+      # for "dig"
+      - bind9-dnsutils
+      # for "last"
+      - wtmpdb
+      - systemd-coredump
+      - uuid-runtime  # uuidgen, used by reencode_videos.sh
+      - wget
+
+      # So US/Eastern works
+      - tzdata-legacy
+      - smartmontools
+
+      # For maintaining Debian packages
+      - debmake
+      - debmake-doc
+      - build-essential
+      - devscripts
+      - mc # recommended by the Guide for Debian Maintainers
+      - quilt
+      - sbuild
+      - piuparts
+      - autopkgtest
+      - lintian
+      - git-buildpackage
+      - apt-cacher-ng
+      - auto-apt-proxy
+      - dh-python
+
+      # For working on apt-listchanges
+      # (also markdown, python3-yaml, xsltproc, listed below)
+      - docbook-xml
+      - docbook-xsl
+      - gettext
+      - libxml2-utils
+      - po-debconf
+      - po4a
+      - python3-apt
+      - python3-pyfakefs
+      - python3-pytest
+      - python3-pytest-cov
+      - python3-pytest-mock
+      - python3-setuptools
+      - mypy
+
+      - fprintd
+      - libpam-fprintd
+      - mongodb-org
+      - firefox
+      # Not sure why this doesn't install automatically at least on Debian
+      - libpipewire-0.3-modules-x11
+      # Debian recommends this be manually installed to ensure it doesn't get
+      # erased during updates. See https://wiki.debian.org/DebianUpgrade as of
+      # 2023-09-05.
+      - cryptsetup-initramfs
+      # For agenda.py
+      - python3-icalendar
+      - python3-recurring-ical-events
+      - python3-marshmallow
+      - python3-requests-oauthlib
+      # End agenda.py
+      - athena-jot
+      - rsyslog
+      - ttf-mscorefonts-installer
+      - rsync
+      - ed
+      - firefoxpwa
+      - dc
+      - pipenv
+      - ncal
+      - npm
+      - telnet-ssl
+      - jupyter-notebook
+      - hpijs-ppds
+      - handbrake
+      # Github command-line tool
+      - gh
+
+      - wl-clipboard
+      - xclip
+      - gnome-shell-extension-desktop-icons-ng
+      - gnome-shell-extension-appindicator
+      - gnome-shell-extension-prefs
+
+      # Required for X10 transceiver
+      - python3-usb
+
+      - deborphan
+      - signal-desktop
+      - posterazor
+      - tox
+      - v4l-utils
+      - plocate
+      - thunderbird
+      # For annotating, editing, and manipulating PDFs
+      - xournalpp
+      - pdftk-java
+      # Probably needed by locally installed b2 client and/or Athena delete
+      - python3-arrow
+
+      - google-drive-ocamlfuse
+      - libemail-address-perl
+      # Needed for zoom
+      - libxcb-xtest0
+      # Needed for building my resume
+      - xmlto
+      - links
+
+      - ripgrep
+      # Used by shrink-email-images script.
+      - liblinux-inotify2-perl
+      - flameshot
+      # Supposed to be installed automatically but isn't always?
+      # https://bugs.launchpad.net/bugs/1952555
+      - xdg-desktop-portal-gnome
+      - acpi
+      - yubioath-desktop
+      # This is required by yubioath-desktop, don't know if anything
+      # else uses it.
+      - pcscd
+      - gnome-clocks
+      - libnumber-format-perl
+      - net-tools
+      - libconfig-inifiles-perl
+      - rclone
+      - docker.io
+      - peek
+      - keybase
+      # Initially necessary to build LastPass CLI, probably for other things too
+      - cmake
+      - libssl-dev
+
+      - gimp
+      - pavucontrol
+      - id3v2
+      - libid3-tools
+      - gthumb
+      - mairix
+      # To be able to install and use VM in Emacs
+      - texinfo
+      - w3m
+
+      # Needed to install crowdin-cli
+      - ruby-dev
+      # Needed for rendering the Send Later user guide locally
+      - ruby-bundler
+
+      - html2text
+      - qprint
+      - mediainfo
+      - mediainfo-gui
+      - alien
+      - pv
+      - ifuse
+      - jq
+      - yq
+      - google-chrome-stable
+      - libterm-readline-gnu-perl
+      - libtext-roman-perl
+      - vlc
+#      - ogmrip
+#      - libdvd-pkg
+      - markdown
+      - soundconverter
+      - dos2unix
+      - recordmydesktop
+#      - enigmail
+      - fonts-crosextra-caladea
+      - fonts-crosextra-carlito
+      - fonts-beteckna
+      - libreoffice-base
+      - antiword
+      - krb5-user
+      - gawk
+      - sharutils
+      - at
+      - wdiff
+      - sshfs
+      - emacs
+      - emacs-common-non-dfsg
+      # Ubuntu version
+      # - virtualbox
+      # - virtualbox-ext-pack
+      # - virtualbox-guest-additions-iso
+      # - virtualbox-qt
+      # VirtualBox.org version
+      - virtualbox-7.0
+      - openssh-server
+      - dconf-editor
+      - gnome-tweaks
+      - chrome-gnome-shell
+      - mplayer
+      - rcs
+      - cifs-utils
+      - pidgin
+      - make-doc
+      - perl-doc
+      - git
+      - git-lfs
+      - m4
+      - pylint
+      - flake8
+      - python3-flake8
+      - python3-psutil
+      - python3-selenium
+      - python3-paramiko
+      - screen
+      - enum
+      - debconf-utils
+      - mailutils
+      - x11vnc
+      - tigervnc-standalone-server
+      - openbox
+      - xvfb
+      - whois
+      - gwhois
+      - libwww-mechanize-perl
+      - netpbm
+      - graphicsmagick
+      - graphicsmagick-imagemagick-compat
+      - texlive-extra-utils
+      - texlive-latex-extra
+      - remmina
+      - remmina-plugin-rdp
+      - remind
+      - libpango-perl # Needed to build remind
+      - autoconf
+      - autoconf-archive
+      - gnucash
+      # Packages required to build gnucash
+      # Not currently working on Debian 2024-05-22
+      # - libwebkit2gtk-4.0-dev
+      - libgwenhywfar-core-dev
+      - libaqbanking-dev
+      - libofx-dev
+      - libboost-date-time-dev
+      - libboost-regex-dev
+      - libboost-locale-dev
+      - libboost-filesystem-dev
+      - libboost-system-dev
+      - libgmock-dev
+      - libgoffice-0.10-dev
+      - automake
+      - libtool
+      - libboost-dev
+      - libglib2.0-dev
+      - libgtk2.0-dev
+      - guile-3.0-dev
+      - swig
+      - libxml2-dev
+      - libxslt1-dev
+      - xsltproc
+      - libdbi-dev
+      - libdbd-mysql
+      - intltool
+      # End gnucash packages
+      - mercurial
+      # Additional packages required to build thunderbird
+      - llvm-dev
+      - clang
+      - libclang-dev
+      - ccache
+      - uuid
+      - libcurl4-openssl-dev
+      - libiw-dev
+      - libnotify-dev
+      - mesa-common-dev
+      - autoconf2.13
+      - libgtk-3-dev
+      - yasm
+      - libasound2-dev
+      - libpulse-dev
+      - libxt-dev
+      # End thunderbird packages
+      - libical-parser-perl
+      - libnet-imap-simple-perl
+      - libimage-exiftool-perl
+      - jpeginfo
+      - libheif-examples
+      - cpanminus
+      - pmuninstall
+      - virtualenvwrapper
+      - python3-dev
+      - python3-venv
+      - liblapack-dev
+      - gfortran
+      - libpq-dev
+      - pandoc
+      - libhdf5-dev
+      - libsqlite3-dev
+      - libffi-dev
+      - libcap-dev
+      - tre-agrep
+      - xdotool
+      - mariadb-server
+      - libdbd-xbase-perl
+      - postgresql
+      - hebcal
+      - expect
+      - rss2email
+      - python3-feedparser
+      - python3-html2text
+
+      - iftop
+      - parallel
+      # As of Ubuntu 24.04 2024-05-22 There's no longer a package for this in
+      # Ubuntu, so we probably need to install using directly from Amazon, but
+      # I don't need the CLI at the moment so just deferring.
+      # - awscli
+      - s3cmd
+      - compizconfig-settings-manager
+      - compiz-plugins
+      - ffmpeg
+      - python3-pandas
+      - libmime-tools-perl
+      - a2ps
+      - enscript
+      - sound-juicer
+      - libtiff-tools
+      - python3-logbook
+      - python3-watchdog
+
+      # For building XRN
+      - libxaw7-dev
+      - byacc
+      - flex
+      - xutils-dev
+
+      # Perl MongoDB scripts (see also below)
+      - libboolean-perl
+      - libsafe-isa-perl
+
+      # Shabbaton
+      - libexpect-perl
+      - libtemplate-perl
+      - libspreadsheet-xlsx-perl
+
+      # Shabbaton mail merges in LibreOffice
+      - libmariadb-java
+      # Compiling mysql-connector in a virtualenv for Shabbaton
+      - protobuf-compiler
+      - libprotobuf-dev
+
+      # Shabbaton CGI script (see also below)
+      - libcrypt-cbc-perl
+      - libtest-exception-perl
+      - libxml-atom-perl
+      - libtest-mockmodule-perl
+      - libany-moose-perl
+      - liblingua-en-inflect-number-perl
+      - libtest-mockobject-perl
+      - libtest-warn-perl
+      - libtext-glob-perl
+      - libterm-prompt-perl
+      - libtext-csv-perl
+      - libtie-ixhash-perl
+      - python3-yaml
+      - exfat-fuse
+      - exfatprogs
+      - xtightvncviewer
+      - ncftp
+      - culmus
+      - culmus-fancy
+      - nodejs
+      - rhino
+      - gv
+      - adb
+      - fastboot
+      - python3-pip
+      - pipx
+      - jhead
+      - tesseract-ocr
+
+      # Packages required by copy_mailbox.pl
+      - libmail-box-perl
+      - libmail-imapclient-perl
+      - libterm-readpassword-perl
+      - libmail-box-imap4-perl
+
+      # Packages required to build Ruby for Qf
+      - libbison-dev
+      - bison
+      - libgdbm-dev
+      - sqlite3
+      - libyaml-dev
+
+      # For installing qcommons
+      - libssl-dev
+
+  - name: configure mailutils for /usr/bin/mail
+    community.general.alternatives:
+      name: mailx
+      path: /usr/bin/mail.mailutils
+
+  - name: install apt-file for perlmod_install_info
+    apt: name=apt-file
+    register: aptfile
+
+  - name: rebuild apt-file index
+    command: apt-file update
+    when: aptfile.changed
+
+  - name: Explicitly install packages for which perlmod_install_info otherwise
+      generates conflicts
+    apt:
+      name:
+      - libossp-uuid-perl
+      - graphicsmagick-libmagick-dev-compat
+
+  - name: find Perl modules required by comics.cgi
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_dnf: false
+      try_yum: false
+      name: "{{comics_cgi_modules}}"
+
+  - name: install found apt packages
+    apt: name={{fpm.apt}}
+    when: "'apt' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  # Required by yubioath-desktop
+  # Not started because it gets started when it's needed.
+  - name: enable pcscd service
+    service: name=pcscd enabled=yes
+
+  # See https://rt.cpan.org/Public/Bug/Display.html?id=133222
+  - name: fix bugs in Perl iCal::Parser module
+    patch:
+      dest: /usr/share/perl5/iCal/Parser.pm
+      src: Parser.pm.patch
+
+  - name: check for geckodriver
+    stat: path=/usr/local/bin/geckodriver
+    register: driverstat
+
+  - name: install geckodriver
+    when: not driverstat.stat.exists
+    unarchive:
+      dest: /usr/local/bin
+      remote_src: yes
+      src: "{{geckodriverurl}}"
+      owner: root
+      group: root
+
+  # # https://github.com/ansible/ansible/issues/29211
+  # # Note: npm module doesn't allow multiple packages listed under name:
+  # - name: check installed global npm modules for eslint on mozilla code
+  #   stat: path='/usr/lib/node_modules/{{item}}'
+  #   with_items:
+  #   - eslint
+  #   - eslint-plugin-mozilla
+  #   - eslint-plugin-no-unsanitized
+  #   - eslint-scope
+  #   - espree
+  #   - estraverse
+  #   - globals
+  #   register: npm_mozilla_stat
+
+  # - name: install missing global npm modules for eslint on mozilla code
+  #   npm: name='{{item.item}}' global=yes
+  #   with_items: '{{npm_mozilla_stat.results}}'
+  #   when: not item.stat.exists
+
+- hosts: jik6
+  tasks:
+
+  - name: install jik6-only packages
+    apt:
+      name:
+      - xsane
+      - sane
+      - libusb-0.1-4
+
+  # I also have various Brother debs in ~/src, in case they disappear from the
+  # Brother web site.
+
+  - name: install Brother deb required to use scanner as non-root
+    apt:
+      deb: http://www.brother.com/pub/bsc/linux/dlf/brother-udev-rule-type1-1.0.0-1.all.deb
+
+  - name: check if brscan4 is installed
+    shell: dpkg-query --show --showformat '${Status}' brscan4 | grep -q -s '^install'
+    failed_when: False
+    changed_when: False
+    register: brscan4_installed
+
+  - name: install Brother scanner driver
+    apt:
+      deb: https://download.brother.com/welcome/dlf006645/brscan4-0.4.9-1.amd64.deb
+    when: brscan4_installed.rc != 0
+
+  - name: disable unused SANE drivers, to speed things up
+    replace:
+      path: /etc/sane.d/dll.conf
+      regexp: '^(?!brother)([^#\n])'
+      replace: '#\1'
+
+- hosts: desktops
+  tasks:
+
+  - name: check if alien is patched
+    command: grep -q -s tar-magic-transform /usr/bin/alien
+    ignore_errors: yes
+    changed_when: False
+    failed_when: False
+    register: alienpatched
+
+  - name: patch alien
+    patch:
+      basedir: /
+      src: '{{inventory_dir}}/desktops/alien.patch'
+      strip: 1
+    when: alienpatched.rc != 0
+
+  - name: Check if TeamViewer is installed
+    shell: dpkg-query --show --showformat '${Status}' teamviewer | grep -q -s '^install'
+    register: teamviewer_installed
+    changed_when: false
+    failed_when: false
+
+  - name: Install TeamViewer
+    apt: deb=https://download.teamviewer.com/download/linux/teamviewer_amd64.deb
+    when: teamviewer_installed.rc != 0
+
+  - name: disable TeamViewer service
+    service: name=teamviewerd enabled=no state=stopped
+    when: teamviewer_installed.rc != 0
+
+  - name: fix apt keys in legacy location
+    shell: gpg --keyring /etc/apt/trusted.gpg --export {{item}} >
+      /etc/apt/trusted.gpg.d/{{item}}.gpg
+    args:
+      creates: /etc/apt/trusted.gpg.d/{{item}}.gpg
+    loop:
+    - strada
+    - teamviewer
+    - ansible
+
+  # Alas, this doesn't work
+  # - name: configure libdvd-pkg for automatically compiling libdvdcss
+  #   debconf:
+  #     name=libdvd-pkg
+  #     question=libdvd-pkg/post-invoke_hook-remove
+  #     value='false'
+  #     vtype='boolean'
+  # - name: configure libdvd-pkg for automatically compiling libdvdcss
+  #   debconf:
+  #     name=libdvd-pkg
+  #     question=libdvd-pkg/build
+  #     value='true'
+  #     vtype='boolean'
+  # - name: configure libdvd-pkg for automatically compiling libdvdcss
+  #   debconf:
+  #     name=libdvd-pkg
+  #     question=libdvd-pkg/post-invoke_hook-install
+  #     value='true'
+  #     vtype='boolean'
+
+  # This worked te last time we tried it, but we're not currently using it.
+  # - name: check if libdvdcss is compiled
+  #   shell: pkg-config libdvdcss
+  #   ignore_errors: yes
+  #   changed_when: False
+  #   failed_when: False
+  #   register: libdvdcss_installed
+  # - name: tell user to compile libdvdcss
+  #   fail:
+  #     msg: You need to run `sudo dpkg-reconfigure libdvd-pkg`
+  #   when: libdvdcss_installed.rc != 0
+
+  - name: install various CPANM modules
+    cpanm:
+      notest: yes
+      name: '{{item}}'
+    with_items:
+      # auto-dnsbl.pl
+      - Carp::Syslog
+      # print-comics.pl
+      - WWW::Mechanize::Plugin::FollowMetaRedirect
+      - Selenium::Chrome
+      # For Perl scripts that use  MongoDB
+      - MongoDB
+
+  - name: install apticron and apt-listchanges
+    apt:
+      name:
+      - apticron
+      - apt-listchanges
+
+  - name: configure wireshark to install setuid
+    debconf:
+      name=wireshark-common
+      question=wireshark-common/install-setuid
+      value='true'
+      vtype='boolean'
+  - name: install wireshark
+    apt: name=wireshark
+
+  # - name: install papertrail gem
+  #   gem: name=papertrail user_install=no
+
+  # - name: install crowdin-cli gem
+  #   gem: name=crowdin-cli user_install=no
+
+  - block:
+    - name: install coal-mine
+      community.general.pipx: name=coal-mine state=latest
+    - name: install mastodon-archive
+      community.general.pipx:
+        name: mastodon-archive
+        source: https://github.com/jikamens/mastodon-archive/archive/master.zip
+    - name: install twofas-cli
+      community.general.pipx: name=twofas-cli state=latest
+    environment:
+      PIPX_HOME: /usr/local/pipx
+      PIPX_BIN_DIR: /usr/local/bin
+
+  - name: install OS packages required by update-shabbat-tasks.py
+    apt: name=python3-suntime
+
+  - name: install Slack
+    apt: name=slack-desktop state=present
+
+  - name: install bitwarden CLI
+    community.general.npm:
+      name: '@bitwarden/cli'
+      global: true
+
+- name: install virtualization packages
+  hosts: virt_hosts
+  tasks:
+  - name: install libvirt-clients
+    apt: name=libvirt-clients
+
+- name: install battery life optimizer
+  hosts: laptops
+  tasks:
+  - name: disable power-profiles-daemon
+    systemd: name=power-profiles-daemon enabled=false masked=true state=stopped
+  - name: install tlp
+    apt: name=tlp
+  - name: enable and start tlp
+    service: name=tlp enabled=yes state=started
+
+- hosts: dropbox_desktops
+  tasks:
+  - name: dropbox apt key
+    apt_key:
+      id: 1C61A2656FB57B7E4DE0F4C1FC918B335044912E
+      keyserver: pgp.mit.edu
+      keyring: /etc/apt/trusted.gpg.d/dropbox.gpg
+  - name: dropbox apt repository
+    apt_repository:
+      filename: /etc/apt/sources.list.d/dropbox
+      repo: '{{dropbox_repo}}'
+      update_cache: no
+    register: dropboxrepo
+  - name: update apt metadata after adding repositories
+    command: apt update
+    changed_when: False
+    when: dropboxrepo.changed
+  - name: install dropbox
+    apt:
+      name:
+      - dropbox
+      - python3-gpg  # required for verifying signatures
+
+- hosts: debian_desktops
+  tasks:
+  - name: Uninstall opensc packages that cause annoying FF+TB prompts
+    apt:
+      state: absent
+      name:
+      - opensc
+      - opensc-pkcs11
+
+  # As of 2024-05-22 Ubuntu 24.04, the virtualenvwrapper package in Ubuntu
+  # handles this by loading the virtualenvwrapper lazy script as part of shell
+  # initialization, so it doesn't use autocompletion anymore, but the package
+  # on Debian still does, so this is only needed on Debian.
+  - name: Create symlinks for virtualenvwrapper autocompletion
+    file:
+      path: /usr/share/bash-completion/completions/{{item}}
+      src: virtualenvwrapper
+      state: link
+    with_items: [mkvirtualenv, workon]

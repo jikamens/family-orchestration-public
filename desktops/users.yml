@@ -1,0 +1,32 @@
+---
+- hosts: desktops
+  tasks:
+  - name: create "jik" user
+    user:
+      name: jik
+      comment: Jonathan Kamens
+      createhome: yes
+
+  - name: get groups
+    getent: database=group
+    
+  - name: add jik to secondary groups
+    user: name=jik groups="{{item}}" append=yes
+    when: item in ansible_facts.getent_group
+    with_list: ['sudo', 'sambashare', 'vboxusers', 'wireshark']
+
+- hosts: virt_hosts
+  tasks:
+  - name: check if libvirt exists
+    command: 'grep -q -s ^libvirt: /etc/group'
+    changed_when: false
+    failed_when: false
+    register: libvirt_grep
+
+  - name: Add jik to virtualization groups if necessary
+    user:
+      name: jik
+      append: yes
+      groups: libvirt
+      shell: /bin/bash
+    when: libvirt_grep.rc == 0

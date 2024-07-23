@@ -1,0 +1,23 @@
+# Included by ../desktops/jik-customizations/rdp.yml
+- name: install remmina config in .local/share
+  template:
+    src: desktop.remmina
+    dest: /home/jik/.local/share/remmina/{{rdpHost}}-{{rdpPort}}.remmina
+    owner: jik
+    group: jik
+  when: "rdpHost != inventory_hostname"
+  loop: "{{groups['desktops']}}"
+  loop_control:
+    loop_var: rdpHost
+
+- name: install remmina config in .remmina
+  copy:
+    remote_src: true
+    src: /home/jik/.local/share/remmina/{{rdpHost}}-{{rdpPort}}.remmina
+    dest: /home/jik/.remmina/{{rdpHost}}-{{rdpPort}}.remmina
+    owner: jik
+    group: jik
+  when: "rdpHost != inventory_hostname"
+  loop: "{{groups['desktops']}}"
+  loop_control:
+    loop_var: rdpHost

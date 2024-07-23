@@ -1,0 +1,109 @@
+- hosts: desktops
+  tasks:
+  - name: get secrets
+    include_vars: secrets.yml
+  - name: install nfs-common
+    apt: name=nfs-common
+  - name: create /mnt/nas
+    file: state=directory path=/mnt/nas
+  - name: create /mnt/nas/nfs
+    file: state=directory path=/mnt/nas/nfs
+  - name: create /mnt/nas/nfs/homes
+    file: state=directory path=/mnt/nas/nfs/homes
+
+  - name: username line in {{nas_smb['file']}}
+    lineinfile:
+      path: "{{nas_smb['file']}}"
+      regexp: '^\s*username\s*='
+      line: username={{nas_smb['username']}}
+      create: yes
+      mode: 0600
+
+  - name: password line in {{nas_smb['file']}}
+    lineinfile:
+      path: "{{nas_smb['file']}}"
+      regexp: '^\s*password\s*='
+      line: password={{nas_smb['password']}}
+
+- hosts: jik6
+  tasks:
+  - name: mount /home/jik/pictures
+    mount:
+      src: '//nas.{{home_domain}}/photo'
+      path: '/home/jik/pictures'
+      fstype: cifs
+      opts: 'defaults,credentials={{nas_smb["file"]}},uid=jik,gid=users,forceuid,forcegid,noserverino,_netdev,x-systemd.mount-timeout=0'
+      state: mounted
+  - name: mount /mnt/nas/nfs/photo
+    mount:
+      src: nas.{{home_domain}}:/volume1/photo
+      path: /mnt/nas/nfs/photo
+      fstype: nfs
+      opts: defaults,_netdev,x-systemd.mount-timeout=0
+      state: mounted
+  - name: mount /home/jik/ogg
+    mount:
+      src: '//nas.{{home_domain}}/music'
+      path: '/home/jik/ogg'
+      fstype: cifs
+      opts: 'defaults,credentials={{nas_smb["file"]}},uid=jik,gid=users,forceuid,forcegid,noserverino,_netdev,x-systemd.mount-timeout=0'
+      state: mounted
+  - name: mount /mnt/nas/nfs/music
+    mount:
+      src: nas.{{home_domain}}:/volume2/music
+      path: /mnt/nas/nfs/music
+      fstype: nfs
+      opts: defaults,_netdev,x-systemd.mount-timeout=0
+      state: mounted
+  - name: mount /mnt/nas/nfs/homes
+    mount:
+      src: 'nas.{{home_domain}}:/volume4/homes'
+      path: '/mnt/nas/nfs/homes'
+      fstype: nfs
+      opts: 'defaults,_netdev,x-systemd.mount-timeout=0'
+      state: mounted
+  - name: mount /mnt/video
+    mount:
+      src: '//nas.{{home_domain}}/video'
+      path: '/mnt/video'
+      fstype: cifs
+      opts: 'defaults,credentials={{nas_smb["file"]}},uid=jik,gid=users,forceuid,forcegid,noserverino,_netdev,x-systemd.mount-timeout=0'
+      state: mounted
+  - name: mount /mnt/nas/nfs/video
+    mount:
+      src: nas.{{home_domain}}:/volume1/video
+      path: /mnt/nas/nfs/video
+      fstype: nfs
+      opts: defaults,_netdev,x-systemd.mount-timeout=0
+      state: mounted
+  - name: create /etc/systemd/system/remote-fs-pre.target.d
+    file:
+      path: /etc/systemd/system/remote-fs-pre.target.d
+      state: directory
+  - name: install /etc/systemd/system/remote-fs-pre.target.d/override.conf
+    copy:
+      dest: /etc/systemd/system/remote-fs-pre.target.d/override.conf
+      content: |
+        [Unit]
+        Requires=NetworkManager-wait-online.service
+        After=NetworkManager-wait-online.service
+
+- hosts: laptops
+  tasks:
+  - name: mount /home/jik/pictures
+    mount:
+      src: '//nas.{[home_domain}}/photo'
+      path: '/home/jik/pictures'
+      fstype: cifs
+      boot: false
+      opts: 'defaults,noauto,credentials={{nas_smb["file"]}},uid=jik,gid=users,forceuid,forcegid,noserverino,_netdev,x-systemd.mount-timeout=0'
+      state: present
+
+  - name: mount /mnt/nas/nfs/homes
+    mount:
+      src: 'nas.{{home_domain}}:/volume4/homes'
+      path: '/mnt/nas/nfs/homes'
+      fstype: nfs
+      boot: false
+      opts: 'defaults,noauto,_netdev,x-systemd.mount-timeout=0'
+      state: present

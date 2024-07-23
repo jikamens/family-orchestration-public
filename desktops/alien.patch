@@ -1,0 +1,170 @@
+--- /usr/share/perl5/Alien/Package/Tgz.pm~	2015-09-10 17:38:58.000000000 -0400
++++ /usr/share/perl5/Alien/Package/Tgz.pm	2016-09-23 12:44:46.806892221 -0400
+@@ -10,6 +10,10 @@
+ use strict;
+ use base qw(Alien::Package);
+ use Cwd qw(abs_path);
++use File::Basename 'dirname';
++use File::Path 'make_path';
++
++our $magic_transform = 0;
+ 
+ my $tarext=qr/\.(?:tgz|tar(?:\.(?:gz|Z|z|bz|bz2))?|taz)$/;
+ 
+@@ -122,33 +126,59 @@
+ 
+ 	# Now figure out the conffiles. Assume anything in etc/ is a
+ 	# conffile.
+-	my @conffiles;
+-	open (FILELIST,"tar vtf $file | grep etc/ |") ||
+-		die "getting filelist: $!";
++	my(@conffiles, @filelist, %transforms);
++	open (FILELIST, "-|", "tar vtf '$file'") || die "getting filelist: $!";
++        my $pkg_name = $this->name;
++        my $transform_ok = $magic_transform;
+ 	while (<FILELIST>) {
+-		# Make sure it's a normal file. This is looking at the
+-		# permissions, and making sure the first character is '-'.
+-		# Ie: -rw-r--r--
+-		if (m:^-:) {
+-			# Strip it down to the filename.
+-			m/^(.*) (.*)$/;
+-			push @conffiles, "/$2";
+-		}
+-	}
+-	$this->conffiles(\@conffiles);
++            chomp;
++            my($mode, $user_group, $size, $date, $time, $fname) =
++                split(' ', $_, 6);
++
++            # Normal files (mode starting with "-" in etc are conf files.
++            if ($fname =~ m,^etc/, and $mode =~ /^-/) {
++                push @conffiles, "/$fname";
++            }
++
++            # Skip install scripts
++            next if ($fname =~ m,^install/,);
++
++            # Figure out name transformations
++            if ($magic_transform and $transform_ok) {
++                if ($fname !~ m,^(?:$pkg_name[^/]+/)?([^/]*)$,) {
++                    $transform_ok = 0;
++                    next;
++                }
++                
++                my $new_name;
++                my $old_name = $1;
++                if (! $old_name) {
++                    # Ignore top-level directory
++                    next;
++                }
++                if ($mode =~ /x/) {
++                    $new_name = "usr/bin/$old_name";
++                }
++                elsif ($old_name =~ /\.(\d)$/) {
++                    $new_name = "usr/share/man/man$1/$old_name";
++                }
++                elsif ($mode =~ /^-/ and $old_name =~ /^[A-Z]/) {
++                    $new_name = "usr/share/doc/$pkg_name/$old_name";
++                }
++                if ($new_name) {
++                    print "$fname -> $new_name\n";
++                    $transforms{$fname} = $new_name;
++                    $fname = $new_name;
++                }
++            }
+ 
+-	# Now get the whole filelist. We have to add leading /'s to the
+-	# filenames. We have to ignore all files under /install/
+-	my @filelist;
+-	open (FILELIST, "tar tf $file |") ||
+-		die "getting filelist: $!";
+-	while (<FILELIST>) {
+-		chomp;
+-		unless (m:^install/:) {
+-			push @filelist, "/$_";
+-		}
+-	}
++            push @filelist, "/$fname";
++        }
++	$this->conffiles(\@conffiles);
+ 	$this->filelist(\@filelist);
++        if ($transform_ok and %transforms) {
++            $this->{transforms} = \%transforms;
++        }
+ 
+ 	# Now get the scripts.
+ 	foreach my $script (keys %{scripttrans()}) {
+@@ -168,11 +198,21 @@
+ 	my $this=shift;
+ 	$this->SUPER::unpack(@_);
+ 	my $file=abs_path($this->filename);
++        my $unpacked_tree = $this->unpacked_tree;
+ 
+-	$this->do("cd ".$this->unpacked_tree."; tar xpf $file")
++	$this->do("cd $unpacked_tree; tar xpf $file")
+ 		or die "Unpacking of '$file' failed: $!";
+ 	# Delete the install directory that has slackware info in it.
+-	$this->do("cd ".$this->unpacked_tree."; rm -rf ./install");
++	$this->do("cd $unpacked_tree; rm -rf ./install");
++
++        if ($this->{transforms}) {
++            while (my($old, $new) = each %{$this->{transforms}}) {
++                my $source = "$unpacked_tree/$old";
++                my $target = "$unpacked_tree/$new";
++                make_path dirname $target;
++                rename($source, $target) or die "rename($source, $target): $!";
++            }
++        }
+ 
+ 	return 1;
+ }
+--- /usr/bin/alien~	2015-10-23 16:53:48.000000000 -0400
++++ /usr/bin/alien	2016-09-23 12:45:48.386422055 -0400
+@@ -70,6 +70,30 @@
+ code in them, unless you want this source code to be installed in your root
+ directory when you install the package!
+ 
++However, if you specify B<--tar-magic-transform>, then B<alien> will attempt to
++magically transform the paths in the tgz file into sane Linux directory
++paths. This works only when all of the paths are either in the root directory
++of the tgz file or in an immediate subdirectory whose name starts with the
++package name. If this condition is met, then paths are transformed as follows:
++
++=over
++
++=item *
++
++Executable files are moved to /usr/bin.
++
++=item *
++
++Files whose names end with a period and a number are moved to
++/usr/share/man/manI<number>.
++
++=item *
++
++Any other files whose names start with capital letters are moved to
++/usr/share/doc/I<package_name>.
++
++=back
++
+ When using B<alien> to convert a tgz package, all files in /etc in are assumed
+ to be configuration files.
+ 
+@@ -332,6 +356,7 @@
+      Enables these options:
+        --description=<desc> Specify package description.
+        --version=<version>  Specify package version.
++       --tar-magic-transform Attempt intelligent mapping of paths in tar file.
+   -p, --to-pkg              Generate a Solaris pkg package.
+   -i, --install             Install generated package.
+   -g, --generate            Generate build tree, but do not build package.
+@@ -365,6 +390,7 @@
+ 	"to-tgz|t"       => sub { $destformats{tgz}=1 },
+ 	"to-slp"         => sub { $destformats{slp}=1 },
+ 	"to-pkg|p"       => sub { $destformats{pkg}=1 },
++        "tar-magic-transform" => \$Alien::Package::Tgz::magic_transform,
+ 	"test|T"         => \$test,
+ 	"generate|g"     => \$generate,
+ 	"install|i"      => \$install,

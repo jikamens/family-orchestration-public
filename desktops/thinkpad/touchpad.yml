@@ -1,0 +1,31 @@
+---
+- hosts: jik-x1
+  tasks:
+  - name: unblacklist i2c_i801 kernel module
+    replace:
+      path: /etc/modprobe.d/blacklist.conf
+      regexp: '^(\s*blacklist\s+i2c_i801\b)'
+      replace: '#\1'
+    register: i2c_i801
+
+  - name: check if synaptics_intertouch kernel option is already set
+    command: 'grep -q -s psmouse\.synaptics_intertouch /etc/default/grub'
+    register: check_intertouch
+    failed_when: false
+    changed_when: false
+
+  - name: add synaptics_intertouch kernel option
+    replace:
+      path: /etc/default/grub
+      regexp: '^(\s*GRUB_CMDLINE_LINUX_DEFAULT.*".*)"'
+      replace: '\1 psmouse.synaptics_intertouch=1"'
+    when: check_intertouch.rc != 0
+    register: intertouch
+
+  - name: rebuild grub configuration
+    command: update-grub
+    when: intertouch.changed
+
+  - name: check if reboot needed to fix touchpad
+    fail: msg='Please reboot to fix touchpad!'
+    when: i2c_i801.changed or intertouch.changed

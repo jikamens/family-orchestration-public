@@ -1,0 +1,12 @@
+---
+- hosts: desktops
+  tasks:
+  - name: install automatic USB audio selection script
+    copy:
+      dest: /usr/local/usb-audio-select.sh
+      src: '{{inventory_dir}}/desktops/usb-audio-select.sh'
+      mode: 0755
+  - name: install automatic USB audio selection script, step 2
+    shell: /usr/local/usb-audio-select.sh --install
+    args:
+      creates: /lib/udev/rules.d/99-usb-audio-auto-select.rules

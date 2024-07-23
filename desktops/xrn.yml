@@ -1,0 +1,25 @@
+- hosts: desktops
+  tasks:
+  - name: check if xrn exists
+    stat: path=/usr/bin/xrn
+    register: xrnstat
+  - name: clone XRN source code
+    git:
+      repo: https://github.com/jikamens/xrn.git
+      dest: /tmp/xrn-build
+      depth: 1
+      force: yes
+    when: xrnstat.stat.path is not defined
+  - name: autoreconf xrn build
+    command: autoreconf chdir=/tmp/xrn-build
+    when: xrnstat.stat.path is not defined
+  - name: configure xrn build
+    command: ./configure --prefix= --exec-prefix=/usr chdir=/tmp/xrn-build
+    when: xrnstat.stat.path is not defined
+  - name: build xrn
+    command: make -j chdir=/tmp/xrn-build
+    when: xrnstat.stat.path is not defined
+  - name: install xrn
+    command: make install chdir=/tmp/xrn-build
+    when: xrnstat.stat.path is not defined
+ 

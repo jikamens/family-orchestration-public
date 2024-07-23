@@ -1,0 +1,31 @@
+- name: install daily expensepages cron job
+  hosts: jik6
+  tasks:
+  - name: install /usr/local/bin/expense-pages
+    copy:
+      content: |
+        #!/bin/bash -e
+
+        tf=/tmp/Dining.$$.html
+
+        export PATH=/home/jik/scripts:$PATH
+        expense-page.pl >| $tf
+        sftp -q -i /home/jik/.ssh/id_rsa_expensepages -P 2222 \
+             -b <(echo put $tf public_html/pages/Dining.html) \
+             expensepages@jik4.{{email_domain}} \
+             >/dev/null
+        expense-page.pl --title 'Josie Dining' --account-re \
+            '^Expenses:Dining:Josephina' --limit 70 >| $tf
+        sftp -q -i /home/jik/.ssh/id_rsa_expensepages -P 2222 \
+             -b <(echo put $tf public_html/pages/JosieDining.html) \
+             expensepages@jik4.{{email_domain}} \
+             >/dev/null
+        rm $tf
+      dest: /usr/local/bin/expense-pages
+      mode: 0755
+  - name: install /etc/cron.d/expense-pages
+    copy:
+      content: |
+        30 6 * * * root /usr/local/bin/expense-pages
+      dest: /etc/cron.d/expense-pages
+      mode: 0644

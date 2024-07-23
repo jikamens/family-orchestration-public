@@ -1,0 +1,1091 @@
+---
+- hosts: main_server
+  tasks:
+
+  - name: get secrets
+    include_vars: secrets.yml
+
+  - name: install MongoDB repo
+    copy:
+      dest: /etc/yum.repos.d/mongodb-org-7.0.repo
+      content: |
+        [mongodb-org-7.0]
+        name=MongoDB Repository
+        baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+        gpgcheck=1
+        enabled=1
+        gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+  # We do this in two steps to ensure that installing mongodb-org doesn't pull
+  # in the wrong version of mongosh
+  # For why this is necessary see:
+  # https://stackoverflow.com/q/77062607
+  - name: install mongosh
+    dnf: name=mongodb-mongosh-shared-openssl3
+  - name: install mongodb server
+    dnf: name=mongodb-org
+
+  - name: install OS Python packages required by clean-comics-kingdom.py
+    yum:
+      name:
+      - python3dist(pymongo)
+      - python3dist(requests)
+
+  - name: install pip Python packages required by clean-comics-kingdom.py
+    pip:
+      name:
+      # Unfortunately the version of numpy in the OS is incompatible with the
+      # latest version of pandas in PyPI. - 2023-01-12 jik
+      - numpy
+      # I legit have no idea why there's no OS package for this but presumably
+      # this will be fixed at some point? - 2023-01-12 jik
+      - pandas
+
+  - name: find Perl modules required by NGP webstump
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - CGI
+      - FindBin
+      - MIME::Parser
+      - POSIX
+      - Convert::UU
+      - XML::RSS
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by tmda.cgi
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - CGI
+      - CGI::Carp
+      - Crypt::CBC
+      - Errno
+      - File::Basename
+      - File::HomeDir
+      - File::Slurp
+      - HTML::Entities
+      - MIME::Base64
+      - Term::ReadPassword
+    
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by holidays.cgi
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - CGI
+      - Date::Parse
+      - POSIX
+      - Text::Roman
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by Spamcop.pm
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Carp
+      - Data::Dumper
+      - YAML::XS
+      - WWW::Mechanize
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by auto-spamcop.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - lib
+      - Getopt::Long
+      - WWW::Mechanize
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by comics.cgi
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name: "{{comics_cgi_modules}}"
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by file-sent-items.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Date::Parse
+      - Getopt::Long
+      - IO::Socket::SSL
+      - Mail::IMAPClient
+      - Term::ReadPassword
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by /etc/mail/bogofilter-milter.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - DB_File
+      - Data::Dumper
+      - English
+      - Fcntl
+      - Email::MIME
+      - File::Basename
+      - File::Temp
+      - Getopt::Long
+      - IO::Scalar
+      - Net::CIDR
+      - Net::DNS
+      - POSIX
+      - Proc::Daemon
+      - Socket
+      - Sys::Syslog
+      - Mail::Alias
+      - Sendmail::PMilter
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by auto-dnsbl.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Net::IP
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by parse_daily_ink.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Data::Dumper
+      - Date::Parse
+      - DateTime
+      - File::Basename
+      - Getopt::Long
+      - HTML::Entities
+      - MIME::Parser
+      - MIME::Base64
+      - POSIX
+      - MongoDB
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by njabl-graph.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Date::Parse
+      - GD::Graph::bars
+      - Getopt::Long
+      
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by njabl-count.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Date::Parse
+      - Time::Local
+      - POSIX
+      - Getopt::Long
+      
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by my-bogotrain
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Date::Parse
+      - File::Basename
+      - File::Slurp
+      - Getopt::Long
+      - Linux::Inotify2
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by logwatch.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Getopt::Long
+      - Time::Local
+      - File::Basename
+      - DB_File
+      - Fcntl
+      - English
+      - File::Temp
+      - File::Copy
+      - File::Slurp
+      - FindBin
+      - Date::Parse
+      - LWP::UserAgent
+      - POSIX
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by ~andrea/tmda-check.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Email::Address
+      - Email::Simple
+      - File::Slurp
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+
+  - name: find Perl modules required by kids-email.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - DB_File
+      - File::Slurp
+      - MIME::Lite
+      - Net::IMAP::Simple
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+        
+  - name: find Perl modules required by copy_mailbox.pl
+    register: fpm
+    failed_when: "'missing' in fpm"
+    perlmod_install_info:
+      try_apt: false
+      name:
+      - Mail::Box::Manager
+      - Mail::Box::IMAP4
+
+  - name: install found dnf packages
+    dnf: name={{fpm.dnf}}
+    when: "'dnf' in fpm"
+
+  - name: install found cpanm packages
+    cpanm: name={{item}}
+    with_items: "{{fpm.cpanm}}"
+    when: "'cpanm' in fpm"
+        
+  - name: configure network interface
+    nmcli:
+      conn_name: enp0s4
+      type: ethernet
+      ifname: enp0s4
+      autoconnect: true
+      method4: manual
+      dns4: ["127.0.0.1"]
+      ip4: {{ip4}}
+      gw4: {{gw4}}
+      method6: manual
+      ip6: ["{{ip6_1}}", "{{ip6_2}}"]
+      gw6: fe80::1
+      state: present
+
+  - name: install newer version of CPAN than the OS
+    cpanm: name=CPAN version=2.34
+
+  # For reasons I don't understand, cpanm installs CPAN under /usr/share/perl5
+  # instead of /usr/local/share/perl5, and as a result, even after installing
+  # the newest version the vendor version still takes precedence, so CPANM
+  # continues to think the old version is installed so it keeps rerunning the
+  # install every time the playbook is run. The easiest fix for this is to
+  # delete the vendor version of CPAN.pm after installing the new version with
+  # CPANM.
+  - name: delete vendor version of CPAN.pm
+    file: path=/usr/share/perl5/vendor_perl/CPAN.pm state=absent
+
+  - name: install newer version of Net::DNS than the OS
+    cpanm: name=Net::DNS version=1.36
+
+  - name: install things required to build PGP 2.6.2
+    yum:
+      name:
+      # Needed to be able to build pgp 2.6.2
+      - libgcc.i686
+      - glibc-devel.i686
+      # Needed to check binaries for executable stack ("execstack" utility)
+      - prelink
+
+  - name: install Coal Mine
+    pip:
+      name: coal-mine
+      executable: pip3
+
+  - name: Install /etc/coal-mine.ini
+    copy:
+      dest: /etc/coal-mine.ini
+      mode: 0600
+      content: |
+        [logging]
+        file=/var/log/coal-mine.log
+        rotate=true
+
+        [mongodb]
+        hosts=localhost
+        database=coalmine
+        username=coalmine
+        password={{coal_mine_mongodb_password}}
+        authSource=coalmine
+
+        [email]
+        sender=jik@{{email_domain}}
+
+        [wsgi]
+        port=8081
+        auth_key={{coal_mine_auth_key}}
+
+  - name: Install Coal Mine service unit file
+    copy:
+      dest: /etc/systemd/system/coal-mine.service
+      content: |
+        [Unit]
+        Description=Coal Mine server
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/local/bin/coal-mine
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+    register: coal_mine_service_file
+
+  # Ansible module is incompatible with current PyMongo as of 2022-01-31,
+  # will eventually be fixed. Ref: https://devops.stackexchange.com/a/15230
+  # - mongodb_user:
+  #     database: coalmine
+  #     login_database: admin
+  #     login_password: '{{jik4_mongodb_admin_password}}'
+  #     login_user: admin
+  #     name: coalmine
+  #     password: '{{coal_mine_mongodb_password}}'
+  #     roles: readWrite
+  #     update_password: on_create
+
+  # Coal Mine is restarted below if necessary, after innd systemd config
+  # changes.
+
+  - name: install /home/jik/.coal-mine.ini
+    copy:
+      dest: /home/jik/.coal-mine.ini
+      owner: jik
+      group: jik
+      mode: 0600
+      content: |
+        [coal-mine]
+        host=localhost
+        port=8081
+        auth-key={{coal_mine_auth_key}}
+
+  - name: install internal web rewrite proxy for Coal Mine
+    blockinfile:
+      dest: /etc/httpd/conf.d/ssl.conf
+      block: |
+        RewriteEngine on
+        RewriteRule (/coal-mine/.*) http://localhost:8081$1 [P]
+      insertbefore: '</VirtualHost>'
+      marker: '# {mark} Ansible-managed Coal Mine configuration'
+    register: coal_mine_ssl_conf
+
+  - name: enable httpd mod_proxy
+    lineinfile:
+      dest: /etc/httpd/conf.modules.d/00-proxy.conf
+      regexp: 'modules/mod_proxy\.so'
+      line: 'LoadModule proxy_module modules/mod_proxy.so'
+    register: httpd_mod_proxy
+
+  - name: enable mod_proxy_http
+    lineinfile:
+      dest: /etc/httpd/conf.modules.d/00-proxy.conf
+      regexp: 'modules/mod_proxy_http\.so'
+      line: 'LoadModule proxy_http_module modules/mod_proxy_http.so'
+    register: httpd_mod_proxy_http
+
+  - name: reload httpd
+    service: name=httpd state=reloaded
+    when: coal_mine_ssl_conf.changed or httpd_mod_proxy.changed or
+          httpd_mod_proxy_http.changed
+
+  - name: Logwatch cron job
+    cron:
+      cron_file: jik-logwatch
+      job: /home/jik/scripts/logwatch.pl --stamp-file /var/log/logwatch.time --rotate-logs --link-full --cf /home/jik/random/logwatch.conf /var/log/logwatch.log
+      minute: '*/5'
+      name: jik-logwatch
+      user: root
+
+  - name: Configure logging to /var/log/logwatch.log
+    copy:
+      dest: /etc/rsyslog.d/jik-logwatch.conf
+      content: |
+        *.* /var/log/logwatch.log
+    register: logwatch_log
+
+  - name: Configure misc.taxes.moderated logging
+    copy:
+      dest: /etc/rsyslog.d/mtm.conf
+      content: |
+        local4.debug /var/log/mtm
+    register: mtm_log
+
+  - name: Configure error logging
+    copy:
+      dest: /etc/rsyslog.d/errors.conf
+      content: |
+        *.err /var/log/errlog
+    register: error_log
+
+  - name: Disable news debug logging
+    replace:
+      path: /etc/rsyslog.conf
+      regexp: '^(news\.=debug)'
+      replace: '#\1'
+    register: no_news_debug_log
+
+  - name: enable syslog server
+    copy:
+      dest: /etc/rsyslog.d/syslog-server.conf
+      content: |
+        $ModLoad imtcp
+        $InputTCPServerRun 514
+    register: rsyslog_server_conf
+
+  - name: Restart rsyslogd
+    service: name=rsyslog state=restarted
+    when: logwatch_log.changed or mtm_log.changed or error_log.changed or
+          no_news_debug_log.changed or rsyslog_server_conf.changed
+
+  - name: create directory for fail2ban systemd configuration
+    file:
+      path: /etc/systemd/system/fail2ban.service.d
+      state: directory
+
+  - name: install fail2ban systemd config, part 2
+    community.general.ini_file:
+      path: /etc/systemd/system/fail2ban.service.d/override.conf
+      section: Unit
+      option: After
+      value: iptables.service
+      create: true
+      no_extra_spaces: true
+    register: fail2ban_after_iptables
+
+  - name: install fail2ban systemd config, part 2
+    community.general.ini_file:
+      path: /etc/systemd/system/fail2ban.service.d/override.conf
+      section: Unit
+      option: Requires
+      value: iptables.service
+      no_extra_spaces: true
+    register: fail2ban_requires_iptables
+
+  - name: reload systemd if necessary
+    systemd: daemon_reload=yes
+    when: fail2ban_after_iptables.changed or fail2ban_requires_iptables.changed
+
+  - name: add iptables rules
+    blockinfile:
+      dest: /etc/sysconfig/iptables
+      block: |
+        -A INPUT -m state --state NEW -m tcp -p tcp -s jik6.{{email_domain}} --dport 27017 -j ACCEPT -m comment --comment "Allow MongoDB from jik6"
+        -A INPUT -m state --state NEW -m tcp -p tcp -s jik6.{{email_domain}} --dport 514 -j ACCEPT -m comment --comment "Allow syslog from jik6"
+        -A INPUT -m state --state NEW -m tcp -p tcp -s jik6.{{email_domain}} --dport 8081 -j ACCEPT -m comment --comment "Allow Coal Mine from jik6"
+      insertbefore: "INPUT.*-j REJECT"
+    register: iptables_rules
+
+  - name: reload iptables
+    service: name=iptables state=reloaded
+    when: iptables_rules.changed
+
+  - name: install auto-dnsbl unit file
+    copy:
+      dest: /etc/systemd/system/auto-dnsbl.service
+      content: |
+        [Unit]
+        Description=Auto-update iptables from DNSBL lookups
+        After=network.target
+        Requires=iptables.service
+
+        [Service]
+        Type=simple
+        ExecStart=/home/jik/src/scripts/auto-dnsbl.pl
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+    register: auto_dnsbl_unit
+
+  - name: restart auto-dnsbl
+    systemd:
+      daemon_reload: yes
+      name: auto-dnsbl
+      state: restarted
+      enabled: yes
+    when: auto_dnsbl_unit.changed or iptables_rules.changed
+
+  - name: Make sure ip6tables is enabled
+    service: name=ip6tables enabled=yes state=started
+
+  - name: Make sure iptables is enabled
+    service: name=iptables enabled=yes state=started
+
+  - name: Configure logrotate for misc.taxes.moderated
+    copy:
+      dest: /etc/logrotate.d/mtm
+      content: |
+        /var/log/mtm {
+          monthly
+          rotate 9999
+          compress
+          compresscmd=/usr/bin/bzip2
+          uncompresscmd=/usr/bin/bunzip2
+          compressext=.bz2
+          missingok
+          sharedscripts
+          postrotate
+            /bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true
+          endscript
+        }
+
+  - name: Configure logrotate for error logging
+    copy:
+      dest: /etc/logrotate.d/errors
+      content: |
+        /var/log/errlog {
+          daily
+          rotate 1
+          nocompress
+          missingok
+          sharedscripts
+          postrotate
+            /bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true
+          endscript
+        }
+
+  - name: make sure logrotate is enabled
+    systemd: name=logrotate.timer enabled=yes state=started
+
+  - name: make sure mimedefang is installed
+    yum: name=mimedefang
+
+  - name: disable SpamAssassin in mimedefang
+    lineinfile:
+      path: /etc/mail/mimedefang-filter
+      line: '$Features{"SpamAssassin"} = 0;'
+      insertafter: detect_and_load_perl_modules
+    register: mimedefang_disable_spamassassin
+
+  - name: allow vcs files in mimedefang
+    replace:
+      path: /etc/mail/mimedefang-filter
+      # N.B. Will stop working if they move vcs to the beginning or end of the
+      # extension list
+      regexp: '(\$bad_exts\s*=.*)\|vcs\|'
+      replace: '\1|'
+    register: mimedefang_vcs
+    
+  - name: disable suspicious header and antivirus filtering in mimedefang
+    lineinfile:
+      path: /etc/mail/mimedefang-filter
+      line: '    return; # do not want any filter_begin functionality'
+      insertafter: '^sub filter_begin'
+    register: mimedefang_disable_filter_begin
+
+  - name: add mimedefang reject-after-archiving block
+    blockinfile:
+      path: /etc/mail/mimedefang-filter
+      block: |4
+              if (-s "reject-after-archiving") {
+                 open(REJECT, "<", "reject-after-archiving");
+                 chomp($reason = <REJECT>);
+                 close(REJECT);
+                 action_quarantine_entire_message($reason);
+                 action_bounce($reply);
+              }
+      marker: '# {mark} ANSIBLE MANAGED reject-after-archiving BLOCK'
+      insertbefore: 'I HATE HTML MAIL'
+    register: mimedefang_reject_block
+
+  - name: add mimedefang filter_recipient
+    blockinfile:
+      path: /etc/mail/mimedefang-filter
+      block: |
+        sub filter_recipient {
+            my ($recipient, $sender, $ip, $hostname, $first, $helo,
+                $rcpt_mailer, $rcpt_host, $rcpt_addr) = @_;
+            if ($sender =~ /jik\@kamens/i and $recipient =~ /\@{{mimedefang_work_email_domain|replace('.','\.')}}/i) {
+                open(REJECT, '>', 'reject-after-archiving');
+                print(REJECT "Don\'t send work mail through your personal account!");
+                close(REJECT);
+            }
+            return('CONTINUE');
+        }
+      marker: '# {mark} ANSIBLE MANAGED filter_recipient BLOCK'
+      insertbefore: 'DO NOT delete'
+    register: mimedefang_filter_recipient
+
+  - name: enable, start/restart mimedefang service
+    service:
+      name: mimedefang
+      enabled: yes
+      state: '{{(mimedefang_disable_spamassassin.changed or
+        mimedefang_vcs.changed or mimedefang_disable_filter_begin.changed or
+        mimedefang_reject_block.changed or mimedefang_filter_recipient.changed)|
+        ternary("restarted", "started")}}'
+
+  - name: install opendkim
+    yum: name=opendkim
+
+  - name: opendkim confirm default key
+    file:
+      state: file
+      path: /etc/opendkim/keys/default.private
+
+  - name: opendkim keytable {{email_domain}}
+    lineinfile:
+      path: /etc/opendkim/KeyTable
+      line: default._domainkey.{{email_domain}} {{email_domain}}:default:/etc/opendkim/keys/default.private
+    register: keytable_email_domain
+
+  - name: opendkim keytable {{home_domain}}
+    lineinfile:
+      path: /etc/opendkim/KeyTable
+      line: default._domainkey.{{home_domain}} {{home_domain}}:default:/etc/opendkim/keys/default.private
+    register: keytable_home_domain
+
+  - name: opendkim {{email_domain}} signing
+    lineinfile:
+      path: /etc/opendkim/SigningTable
+      line: '*@{{email_domain}} default._domainkey.{{email_domain}}'
+    register: signing_email_domain
+
+  - name: opendkim {{email_domain}} subdomain signing
+    lineinfile:
+      path: /etc/opendkim/SigningTable
+      line: '*@*.{{email_domain}} default._domainkey.{{email_domain}}'
+    register: signing_email_domain_sub
+
+  - name: opendkim {{home_domain}} signing
+    lineinfile:
+      path: /etc/opendkim/SigningTable
+      line: '*@{{home_domain}} default._domainkey.{{home_domain}}'
+    register: signing_home_domain
+
+  - name: opendkim confirm et key
+    file:
+      state: file
+      path: /etc/opendkim/keys/et1.private
+
+  - name: opendkim keytable {{org_domain}}
+    lineinfile:
+      path: /etc/opendkim/KeyTable
+      line: et1._domainkey.{{org_domain}} {{org_domain}}:et1:/etc/opendkim/keys/et1.private
+    register: keytable_et
+
+  - name: opendkim et siging
+    lineinfile:
+      path: /etc/opendkim/SigningTable
+      line: '*@{{org_domain}} et1._domainkey.{{org_domain}}'
+    register: signing_et
+
+  - name: opendkim trusted hosts
+    blockinfile:
+      path: /etc/opendkim/TrustedHosts
+      block: |
+        jik4.{{email_domain}}
+        .mit.edu
+        jik2-openvpn
+        jik6.{{email_domain}}
+        192.168.4.0/24
+        # committee@storyspace.org mail server
+        mail10.ezhostingserver.com
+        mod-relay-1.{{email_domain}}
+        moderators.individual.net
+        mod-relay.zaccari.net
+        # mit.edu spam filter
+        .outbound.protection.outlook.com
+        # Debian listserv is run by buffoons
+        bendel.debian.org
+    register: opendkim_trusted
+
+  - name: opendkim PidFile
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^#\s*PidFile'
+      replace: PidFile
+    register: opendkim_pidfile
+
+  - name: opendkim Mode
+    lineinfile:
+      path: /etc/opendkim.conf
+      regexp: '^(Mode\s+)'
+      backrefs: true
+      line: '\1sv'
+    register: opendkim_mode
+
+  - name: opendkim bad Socket
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^(\s*Socket\s+local:)'
+      replace: '#\1'
+    register: opendkim_bad_socket
+
+  - name: opendkim good Socket
+    lineinfile:
+      path: /etc/opendkim.conf
+      regexp: '^\s*Socket\s+'
+      line: 'Socket inet:8891@localhost'
+      insertafter: '^#\s*Socket'
+    register: opendkim_good_socket
+
+  - name: opendkim Domain
+    lineinfile:
+      path: /etc/opendkim.conf
+      regexp: '^Domain\s+'
+      line: 'Domain {{email_domain}},{{home_domain}},{{org_domain}}'
+      insertafter: '^#\s*Domain'
+    register: opendkim_domain
+
+  - name: opendkim Subdomains
+    lineinfile:
+      path: /etc/opendkim.conf
+      line: 'Subdomains yes'
+      insertafter: '^Domain '
+    register: opendkim_subdomains
+
+  - name: opendkim Selector
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^Selector'
+      replace: '#Selector'
+    register: opendkim_selector
+
+  - name: opendkim KeyFile
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^KeyFile'
+      replace: '#KeyFile'
+    register: opendkim_keyfile
+
+  - name: opendkim KeyTable
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^#\s*KeyTable'
+      replace: KeyTable
+    register: opendkim_keytable
+
+  - name: opendkim SigningTable
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^#\s*SigningTable'
+      replace: SigningTable
+    register: opendkim_signingtable
+
+  - name: opendkim ExternalIgnoreList
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^#\s*ExternalIgnoreList'
+      replace: ExternalIgnoreList
+    register: opendkim_externalignorelist
+
+  - name: opendkim InternalHosts
+    replace:
+      path: /etc/opendkim.conf
+      regexp: '^#\s*InternalHosts'
+      replace: InternalHosts
+    register: opendkim_internalhosts
+
+  - name: enable, start/restart opendkim service
+    service:
+      name: opendkim
+      enabled: yes
+      state: '{{(keytable_email_domain.changed or keytable_home_domain.changed or
+        signing_email_domain.changed or signing_email_domain_sub.changed or
+        signing_home_domain.changed or keytable_et.changed or
+        signing_et.changed or opendkim_pidfile.changed or
+        opendkim_trusted.changed or
+        opendkim_mode.changed or opendkim_bad_socket.changed or
+        opendkim_good_socket.changed or opendkim_domain.changed or
+        opendkim_subdomains.changed or opendkim_selector.changed or
+        opendkim_keyfile.changed or opendkim_keytable.changed or
+        opendkim_signingtable.changed or opendkim_externalignorelist.changed or
+        opendkim_internalhosts.changed)|ternary("restarted", "started")}}'
+
+  - name: reload opendmarc service
+    service: name=opendmarc state=reloaded
+    when: opendkim_trusted.changed
+
+  - name: install health-check script
+    copy:
+      dest: /usr/local/bin/health-check
+      mode: 0755
+      content: |
+        #!/bin/bash -e
+
+        PATH=/usr/local/bin:$PATH
+
+        check_sendmail() {
+            expect <<\EOF
+                log_user 0
+                set start [clock seconds]
+                set max_wait 10
+                set warn_threshold 3
+                set timeout 1
+                spawn telnet localhost 25
+                while {[clock seconds] - $start < $max_wait} {
+                    expect {
+                        Sendmail {
+                            set delta [expr [clock seconds] - $start]
+                            if {$delta > $warn_threshold} {
+                                puts stderr "Sendmail responded after $delta seconds"
+                            }
+                            exit 0
+                        }
+                    }
+                }
+                puts stderr "No response from sendmail after $max_wait seconds"
+                exit 1
+        EOF
+        }
+
+        restart_sendmail() {
+            systemctl stop sendmail || :
+            systemctl restart bogofilter-milter
+            systemctl restart mimedefang
+            systemctl restart archivesmtp
+            systemctl restart opendkim
+            systemctl restart opendmarc
+            systemctl start sendmail
+        }
+
+        if ! check_sendmail; then
+            restart_sendmail
+            if ! check_sendmail; then
+                echo No or slow response from sendmail 1>&2
+                exit 1
+            fi
+        fi
+
+        if ! (curl --silent --show-error https://jik4.{{email_domain}}/coal-mine/ |
+              grep -q -s '"status": "error"'); then
+            echo Unexpected response from local Coal Mine server 1>&2
+            exit 1
+        fi
+
+        cmcli get --no-history --id {{email_canary_id}} | \
+          grep -q -s "'status': 'ok'"
+
+        curl --silent --show-error {{coal_mine_canary}} >/dev/null
+        curl --silent --show-error {{health_canary}} >/dev/null
+
+  - name: install health-check crontab
+    copy:
+      dest: /etc/cron.d/health-check
+      content: |
+        */5 * * * * root /usr/local/bin/health-check
+
+  - name: install MailGun webhook config file
+    template:
+      src: mailgun-webhook-config
+      dest: /etc/sysconfig/mailgun-webhook
+      owner: apache
+      group: root
+      mode: 0440
+
+  - name: install MailGun webhook
+    template:
+      src: mailgun-webhook.py
+      dest: /var/www/cgi-bin/mailgun-webhook.py
+      mode: 0555
+
+  - name: create directory for innd systemd configuration
+    file:
+      path: /etc/systemd/system/innd.service.d
+      state: directory
+
+  - name: Don't start innd until after dnsmasq
+    community.general.ini_file:
+      path: /etc/systemd/system/innd.service.d/override.conf
+      section: Unit
+      option: After
+      value: dnsmasq.service
+      create: true
+      no_extra_spaces: true
+    register: innd_after_dnsmasq
+
+  - name: innd requires dnsmasq
+    community.general.ini_file:
+      path: /etc/systemd/system/innd.service.d/override.conf
+      section: Unit
+      option: Requires
+      value: dnsmasq.service
+      no_extra_spaces: true
+    register: innd_requires_dnsmasq
+
+  - name: Pause for PID file after starting innd
+    community.general.ini_file:
+      path: /etc/systemd/system/innd.service.d/override.conf
+      section: Service
+      option: ExecStartPost
+      value: /bin/sleep 3.2
+      no_extra_spaces: true
+    register: innd_startup_sleep
+
+  - name: reload systemd
+    systemd: daemon_reload=yes
+    when: coal_mine_service_file.changed or innd_after_dnsmasq.changed or
+      innd_requires_dnsmasq.changed or innd_startup_sleep.changed
+
+  - name: enable and restart coal-mine
+    systemd:
+      name: coal-mine
+      enabled: yes
+      state: restarted
+    when: coal_mine_service_file.changed
+
+- import_playbook: git_deploys.yml
+- import_playbook: backups/jik4_backup.yml
+- import_playbook: desktops/configs.yml
+- import_playbook: vpn.yml
+- import_playbook: fix_perl_imap4.yml

@@ -1,0 +1,32 @@
+---
+- name: install or update Synology Drive
+  hosts: desktops
+  tasks:
+
+  - name: Get URL of Synology Drive package
+    shell: curl --silent 'https://www.synology.com/api/support/findDownloadInfo?lang=en-us&product=DS918%2B&major=7&minor=0' | jq -r '.info.utilities.detail[0].items[]|select(.dname=="Synology Drive Client")|.files.Ubuntu[].url|select(contains("x86_64"))'
+    register: package_url
+    changed_when: False
+
+  - name: Get build number of Synology Drive package
+    shell: echo '{{package_url.stdout}}' | sed 's/.*-\([0-9]*\)\.x86_64\.deb/\1/'
+    register: package_build
+    changed_when: False
+
+  - name: Get installed Synology Drive build number
+    shell: dpkg-query -W -f '${Status} ${Version}\n' synology-drive |
+      sed -n -e 's/^install.*-//p'
+    ignore_errors: True
+    changed_when: False
+    register: installed_build
+
+  - name: install Synology Drive
+    apt: deb={{package_url.stdout}}
+    when: installed_build.stdout < package_build.stdout
+
+  # See Synology support ticket 3239704
+  - name: Create Nautilus extension symlink for Lunar
+    file:
+      state: link
+      src: /usr/lib/nautilus/extensions-4/libnautilus-drive-extension-4.so
+      dest: /usr/lib/x86_64-linux-gnu/nautilus/extensions-4/libnautilus-drive-extension-4.so

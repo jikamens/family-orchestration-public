@@ -1,0 +1,104 @@
+---
+- hosts: desktops
+  tasks:
+  - name: set ddclient_protocol
+    set_fact: ddclient_protocol=cloudflare
+  - name: install ddclient
+    apt:
+      name:
+      - ddclient
+      - libdata-validate-ip-perl
+    register: ddclient_apt
+  - name: create /etc/ddclient
+    file:
+      path: /etc/ddclient
+      state: directory
+      owner: root
+      group: root
+      mode: 0770
+  - name: create /etc/ddclient/ddclient.conf symlink
+    file:
+      path: /etc/ddclient/ddclient.conf
+      state: link
+      src: ../ddclient.conf
+- hosts: laptops
+  name: laptop ddclient config
+  tasks:
+  - name: get secrets
+    include_vars: '{{inventory_dir}}/secrets.yml'
+  - name: create /etc/ddclient.conf
+    copy:
+      content: |
+        # protocol=cloudflare
+        # server=api.cloudflare.com/client/v4
+        # login=jik@{{email_domain}}, zone={{email_domain}}
+        # min-error-interval=30
+        # password='{{cloudflare_api_key}}'
+        # use=cmd, cmd='ifconfig $(route -n | awk \'$1 == "0.0.0.0" {print $NF; exit}\') | sed -n -e \'s/.* inet \\([0-9.]*\\).*/\\1/p\' | head -1'
+        # {{ansible_hostname}}.{{email_domain}}
+
+        protocol=namecheap
+        server=dynamicdns.park-your-domain.com
+        login={{email_domain}}
+        min-error-interval=30
+        password='{{namecheap_ddns_api_key}}'
+        use=cmd, cmd='ifconfig $(route -n | awk \'$1 == "0.0.0.0" {print $NF; exit}\') | sed -n -e \'s/.* inet \\([0-9.]*\\).*/\\1/p\' | head -1'
+        {{ansible_hostname}}
+      dest: /etc/ddclient.conf
+      owner: root
+      group: root
+      mode: 0600
+    register: ddclient_conf
+- hosts: jik6
+  tasks:
+  - name: get secrets
+    include_vars: '{{inventory_dir}}/secrets.yml'
+  - name: create /etc/ddclient.conf
+    copy:
+      content: |
+        use=web, web=http://checkip.dyndns.com/, min-error-interval=30s
+
+        server=updates.opendns.com
+        protocol=dyndns2
+        login={{opendns_username}}
+        min-error-interval=30
+        password={{opendns_password}}
+        Home
+
+        protocol=namecheap
+        server=dynamicdns.park-your-domain.com
+        login={{email_domain}}
+        min-error-interval=30
+        password={{namecheap_ddns_api_key}}
+        {{inventory_hostname_short}}
+
+        # protocol=cloudflare
+        # server=api.cloudflare.com/client/v4
+        # login=jik@{{email_domain}}, zone={{email_domain}}
+        # min-error-interval=30
+        # password={{cloudflare_api_key}}
+        # {{inventory_hostname_short}}.{{email_domain}}
+      dest: /etc/ddclient.conf
+      owner: root
+      group: root
+      mode: 0600
+    register: ddclient_conf
+- hosts: desktops
+  tasks:
+  - name: Configure ddclient to run as daemon
+    lineinfile:
+      dest: /etc/default/ddclient
+      regexp: ^run_daemon
+      line: run_daemon="true"
+    register: run_daemon
+
+  - name: enable ddclient service
+    service: name=ddclient enabled=yes
+
+  - name: start ddclient service if necessary
+    service: name=ddclient state=started
+    register: service_started
+
+  - name: restart ddclient service if necessary
+    service: name=ddclient state=restarted
+    when: ddclient_conf.changed or run_daemon.changed

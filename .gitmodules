@@ -1,0 +1,18 @@
+[submodule "mod-relay"]
+	path = mod-relay
+	url = git@github.com:jikamens/ansible-usenet-mod-relay
+[submodule "dnsbl-check"]
+	path = dnsbl-check
+	url = git@github.com:jikamens/ansible-dnsbl-check
+[submodule "remember-the-yubikey"]
+	path = remember-the-yubikey
+	url = git@github.com:jikamens/remember-the-yubikey
+[submodule "lib/ansible-gsetting"]
+	path = lib/ansible-gsetting
+	url = git@github.com:jikamens/ansible-gsetting
+[submodule "lib/ansible-postconf"]
+	path = lib/ansible-postconf
+	url = https://github.com/alet/ansible-postconf
+[submodule "private"]
+	path = private
+	url = git@github.com:jikamens/family-orchestration-private

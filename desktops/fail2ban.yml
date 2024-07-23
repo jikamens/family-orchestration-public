@@ -1,0 +1,9 @@
+---
+- hosts: desktops
+  tasks:
+  - name: install fail2ban
+    apt: name=fail2ban
+    register: fail2baninstall
+  - name: restart fail2ban
+    service: name=fail2ban enabled=yes state=restarted
+    when: fail2baninstall.changed

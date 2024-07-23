@@ -1,0 +1,21 @@
+- import_playbook: etherwake.yml
+
+- name: install or update zoom
+  hosts: desktops
+  tasks:
+
+  - name: get current zoom version
+    command: /home/jik/scripts/zoom-update-check.py --print-version
+    register: zoom_version
+    changed_when: False
+
+  - name: check if current zoom version is installed
+    shell: dpkg-query -W -f '${Version} ${Status}\n' zoom | awk '!/deinstall/ {print $1}'
+    ignore_errors: True
+    changed_when: False
+    register: zoom_installed
+
+  - name: install zoom
+    apt: deb=https://zoom.us/client/latest/zoom_amd64.deb
+    when: zoom_installed.stdout == "" or
+      zoom_installed.stdout != zoom_version.stdout

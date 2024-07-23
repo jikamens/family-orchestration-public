@@ -1,0 +1,65 @@
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: GnuCash preferences
+    dconf:
+      key: /org/gnucash/GnuCash/{{item.key}}
+      value: "{{item.value}}"
+    become: true
+    become_user: jik
+    loop:
+    - { key: "dialogs/scheduled-trans/transaction-editor/create-auto",
+        value: true }
+    - { key: "dialogs/scheduled-trans/transaction-editor/create-days",
+        value: "30.0" }
+    - { key: "dialogs/scheduled-trans/transaction-editor/notify",
+        value: false }
+    - { key: "dialogs/tip-of-the-day/show-at-startup", value: false }
+    - { key: "dialogs/sxs/since-last-run/show-notify-window-at-file-open",
+        value: false }
+    - { key: "general/autosave-show-explanation", value: false }
+    - { key: "general/date-backmonths", value: "6.0" }
+    - { key: "general/date-completion-thisyear", value: false }
+    - { key: "general/file-compression", value: false }
+    - { key: "general/grid-lines-horizontal", value: true }
+    - { key: "general/grid-lines-vertical", value: true }
+    - { key: "general/retain-days", value: "3.0" }
+    - { key: "general/retain-type-days", value: true }
+    - { key: "general/retain-type-never", value: false }
+    - { key: "general/register/double-line-mode", value: true }
+    - { key: "general/register/enter-moves-to-end", value: true }
+    - { key: "general/register/show-leaf-account-names", value: false }
+    - { key: "general/register/use-gnucash-color-theme", value: true }
+    - { key: "general/report/currency-choice-other", value: "false" }
+    - { key: "warnings/permanent/reg-split-del-all", value: -3 }
+    - { key: "warnings/permanent/reg-trans-mod", value: -3 }
+
+  - name: create GnuCash share directory
+    file:  
+      path: /home/jik/.local/share/gnucash
+      state: directory
+      owner: jik
+      group: jik
+      mode: 0755
+
+  - name: GnuCash remove splits accelerator
+    lineinfile:
+      path: /home/jik/.local/share/gnucash/accelerator-map
+      line: (gtk_accel_path "<Actions>/GncPluginPageRegisterActions/RemoveTransactionSplitsAction" "<Primary><Shift>s")
+      owner: jik
+      group: jik
+      create: yes
+
+  - name: GnuCash add splits accelerator
+    lineinfile:
+      path: /home/jik/.local/share/gnucash/accelerator-map
+      line: (gtk_accel_path "<Actions>/GncPluginPageRegisterActions/SplitTransactionAction" "<Shift><Alt>s")
+
+  - name: GnuCash remove file save accelerator
+    lineinfile:
+      path: /home/jik/.local/share/gnucash/accelerator-map
+      line: (gtk_accel_path "<Actions>/gnc-plugin-basic-commands-actions/FileSaveAsAction" "")

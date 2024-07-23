@@ -1,0 +1,38 @@
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: jik global git config settings
+    git_config:
+      name: "{{item[0]}}"
+      scope: global
+      value: "{{item[1]|string}}"
+    become: true
+    become_user: jik
+    loop:
+    - [ "credential.helper", "store" ]
+    - [ "user.name", "Jonathan Kamens" ]
+    - [ "push.default", "current" ]
+    - [ "push.autoSetupRemote", "true" ]
+    - [ "pull.rebase", "true" ]
+    - [ "fetch.prune", "true" ]
+    - [ "core.pager", "lessdumb" ]
+    - [ "core.excludesfile", "/home/jik/.gitignore_global" ]
+    - [ "submodule.recurse", "true" ]
+    - [ 'url.git@jikamens.github.com:.insteadOf', "git@github.com:" ]
+
+  - name: install .gitignore_global
+    copy:
+      dest: /home/jik/.gitignore_global
+      owner: jik
+      group: jik
+      content: |
+        \#*
+        *~
+        .#*
+        .DS_Store
+        ._*
+        __pycache__

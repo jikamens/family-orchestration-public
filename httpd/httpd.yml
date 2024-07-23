@@ -1,0 +1,60 @@
+---
+- hosts: jik6
+  tasks:
+  - name: install apache2
+    apt:
+      name:
+      - apache2
+      - apache2-suexec-pristine
+  - name: allow Apache through firewall
+    ufw:
+      rule: allow
+      name: '{{web_server_ufw_profile}}'
+  - name: allow port 8080 through firewall
+    ufw: rule=allow port=8080 proto=tcp
+  - name: enable userdir Apache module
+    apache2_module: name=userdir
+  - name: enable mime Apache module
+    apache2_module: name=mime
+  - name: enable asis Apache module
+    apache2_module: name=asis
+  - name: enable cgid Apache module
+    apache2_module: name=cgid
+  - name: enable suexec Apache module
+    apache2_module: name=suexec
+  - name: AllowOverride all for jik in userdir.conf
+    blockinfile:
+      path: /etc/apache2/mods-available/userdir.conf
+      block: |
+        <Directory /home/jik/public_html>
+          AllowOverride all
+        </Directory>
+    register: userdir
+  - name: httpd enable send-as-is handler
+    replace:
+      dest: /etc/apache2/mods-available/mime.conf
+      regexp: '^([ \t]*)#([ \t]*AddHandler\s+send-as-is)'
+      replace: '\1\2'
+    register: asis
+  - name: httpd enable cgi-script handler
+    replace:
+      dest: /etc/apache2/mods-available/mime.conf
+      regexp: '^([ \t]*)#([ \t]*AddHandler\s+cgi-script)'
+      replace: '\1\2'
+    register: dotcgi
+  - name: httpd listedn on port 8080
+    lineinfile:
+      dest: /etc/apache2/ports.conf
+      line: Listen 8080
+      insertafter: Listen 80
+    register: port
+  - name: httpd default access permissions
+    replace:
+      dest: /etc/apache2/apache2.conf
+      regexp: '^([ \t]*)Require all granted'
+      replace: '\1<RequireAny>\n\1Require host localhost {{inventory_hostname_short}}.{{home_domain}} validator.w3.org\n\1Require ip 127.0.0.1 192.168.4\n\1</RequireAny>'
+    register: allowfrom
+  - name: httpd enable and restart
+    service: name=apache2 enabled=yes state=restarted
+    when: userdir.changed or asis.changed or dotcgi.changed or port.changed or
+          allowfrom.changed

@@ -1,0 +1,12 @@
+- hosts: desktops
+  tasks:
+  - name: add jik to sbuild group
+    user: name=jik groups="sbuild" append=yes
+
+  # file:///usr/share/doc/debmake-doc/html/ch07.en.html
+  - name: create chroot
+    command: sbuild-createchroot --include=auto-apt-proxy
+      --components "{{sbuild_components}}" {{sbuild_suite}}
+      /srv/chroot/{{sbuild_suite}}-amd64-sbuild {{sbuild_repo}}
+    args:
+      creates: /srv/chroot/{{sbuild_suite}}-amd64-sbuild

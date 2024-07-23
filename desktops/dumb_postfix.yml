@@ -1,0 +1,174 @@
+---
+- hosts: desktops
+  tasks:
+  - name: get secrets
+    include_vars: '{{inventory_dir}}/secrets.yml'
+
+  - name: install postfix and mailutils
+    when: ansible_os_family == "Debian"
+    apt:
+      name:
+      - postfix
+      - mailutils
+
+  # We have to set parameters in both debconf and postconf, BEFORE we call
+  # dpkg-reconfigure,  because the postfix configuration script is stupid. See
+  # Debian bug#1053412.
+  
+  - block:
+
+    - name: debconf postfix/main_mailer_type
+      debconf:
+        name=postfix
+        question=postfix/main_mailer_type
+        value='Satellite system'
+        vtype='select'
+      register: mailertype_debconf
+
+    - name: debconf postfix/relayhost
+      debconf:
+        name=postfix
+        question=postfix/relayhost
+        value='{{smtp_host}}:{{smtp_port}}'
+        vtype=string
+      register: relayhost_debconf
+
+    - name: debconf postfix/mailname
+      debconf:
+        name=postfix
+        question=postfix/mailname
+        value='{{email_domain}}'
+        vtype=string
+      register: myorigin_debconf
+
+    - name: debconf postfix/destinations
+      when: ansible_os_family == "Debian"
+      debconf:
+        name=postfix
+        question=postfix/destinations
+        value=localhost
+        vtype=string
+      register: mydestination_debconf
+
+    when: ansible_os_family == "Debian"
+
+  - name: postconf relayhost
+    postconf: name=relayhost value={{smtp_host}}:{{smtp_port}}
+    register: relayhost_postconf
+
+  - name: myorigin postconf
+    postconf: name=myorigin value={{email_domain}}
+    register: myorigin_postconf
+
+  - name: postconf mydestination
+    postconf: name=mydestination value=localhost
+    register: mydestination_postconf
+
+  - name: postconf inet_protocols
+    postconf: name=inet_protocols value=ipv4
+    register: inet_protocols_postconf
+    
+  - name: postconf smtp_sasl_auth_enable
+    postconf: name=smtp_sasl_auth_enable value=yes
+    register: smtp_sasl_auth_enable_postconf
+
+  - name: postconf smtp_sasl_password_maps
+    postconf: name=smtp_sasl_password_maps value=hash:/etc/postfix/sasl_passwd
+    register: smtp_sasl_password_maps_postconf
+
+  - name: postconf smtp_sasl_security_options 
+    postconf: name=smtp_sasl_security_options value=noanonymous
+    register: smtp_sasl_security_options_postconf
+
+  - name: configure relay host in sasl_passwd file
+    lineinfile:
+      dest: /etc/postfix/sasl_passwd
+      create: yes
+      group: postfix
+      mode: 0640
+      regexp: '{{smtp_host}}'
+      line: '{{smtp_host}} {{smtp_username}}:{{smtp_password}}'
+    register: sasl_passwd
+
+  - name: postmap sasl_passwd file
+    command: postmap /etc/postfix/sasl_passwd
+    when: sasl_passwd.changed
+
+  - name: reconfigure postfix
+    shell: dpkg-reconfigure -f noninteractive postfix
+    when: ansible_os_family == "Debian" and (
+          mailertype_debconf.changed or
+          relayhost_debconf.changed or
+          myorigin_debconf.changed or
+          mydestination_debconf.changed)
+    register: dpkg_reconfigure
+
+  - name: restart postfix
+    service: name=postfix state=restarted
+    when: ansible_os_family != "Darwin" and (
+          dpkg_reconfigure.changed or
+          relayhost_postconf.changed or
+          myorigin_postconf.changed or
+          mydestination_postconf.changed or
+          inet_protocols_postconf.changed or
+          smtp_sasl_auth_enable_postconf.changed or
+          smtp_sasl_password_maps_postconf.changed or
+          smtp_sasl_security_options_postconf.changed)
+
+  - name: stop postfix
+    command: postfix stop
+    when: ansible_os_family == 'Darwin' and (
+          relayhost_postconf.changed or
+          myorigin_postconf.changed or
+          mydestination_postconf.changed or
+          inet_protocols_postconf.changed or
+          smtp_sasl_auth_enable_postconf.changed or
+          smtp_sasl_password_maps_postconf.changed or
+          smtp_sasl_security_options_postconf.changed)
+    ignore_errors: yes
+    register: postfixstopped
+
+  - name: start postfix
+    command: postfix start
+    when: postfixstopped.changed
+
+  - name: add alias for root
+    lineinfile:
+      path: /etc/aliases
+      line: 'root: jik@{{email_domain}}'
+      regexp: '^root:'
+    register: root_alias
+
+  - name: add alias for jik
+    lineinfile:
+      path: /etc/aliases
+      line: 'jik: jik@{{email_domain}}'
+      regexp: '^jik:'
+    register: jik_alias
+
+  - name: newaliases
+    command: newaliases
+    when: root_alias.changed or jik_alias.changed
+
+# We need to allow mail relaying through jik6 so the stupid m479 printer that
+# doesn't support secure TLS ciphers can send notification emails without TLS.
+- hosts: jik6
+  tasks:
+  - name: Allow SMTP connections to jik6 so it can be a relay
+    ufw: rule=allow port=smtp
+  - name: Check if SMTP relaying through jik6 from local network enabled
+    command: grep -q -s ^mynetworks.*192\.168 /etc/postfix/main.cf
+    changed_when: False
+    failed_when: false
+    register: relaycheck
+  - name: Enable SMTP relaying through jik6 from local network
+    lineinfile:
+      path: /etc/postfix/main.cf
+      regexp: '^(mynetworks.*)'
+      backrefs: true
+      line: '\1 192.168.4.0/24'
+    when: relaycheck.rc
+    register: relayset
+  - name: Reload Postfix
+    service: name=postfix state=reloaded
+    when: relayset.changed

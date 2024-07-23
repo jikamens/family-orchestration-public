@@ -1,0 +1,24 @@
+---
+- hosts: nas
+  tasks:
+  - name: make SMB case-sensitive
+    lineinfile:
+      dest: /etc/samba/smb.conf
+      line: "\tcase sensitive=yes"
+      regexp: '^\s*case sensitive\s*=\s*yes'
+      insertafter: '\[global\]'
+    register: smb_conf_modified
+
+  - name: restart smbd
+    service: name=pkg-synosamba-smbd state=restarted
+    when: smb_conf_modified.changed
+
+  - name: install exiftool
+    script:
+      cmd: install-exiftool.sh
+      creates: /usr/local/bin/exiftool
+
+  - name: install parallel
+    script:
+      cmd: install-parallel.sh
+      creates: /usr/local/bin/parallel

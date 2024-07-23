@@ -1,0 +1,122 @@
+- hosts: jik6
+  tasks:
+  - name: run jailkit tasks
+    include_tasks: '{{inventory_dir}}/jailkit/tasks/install_jailkit.yml'
+
+- hosts: main_server
+  tasks:
+  - name: create /root/.ssh/id_backup
+    command: ssh-keygen -f /root/.ssh/id_backup -N ''
+    args:
+      creates: /root/.ssh/id_backup
+  - name: fetch /root/.ssh/id_backup.pub
+    changed_when: false
+    fetch:
+      src: /root/.ssh/id_backup.pub
+      dest: /tmp
+  
+- hosts: jik6
+  tasks:
+  - name: jk_init
+    command: jk_init -j /home/jik4back rsync jk_lsh
+    args:
+      creates: /home/jik4back/usr/bin/rsync
+  - name: create /home/jik4back/home
+    file:
+      path: /home/jik4back/home
+      state: directory
+  - name: create jik4back user
+    user:
+      user: jik4back
+      home: /home/jik4back/./home/jik4back
+      shell: /usr/sbin/jk_chrootsh
+  - name: create /home/jik4back/home/jik4back/.ssh
+    file:
+      path: /home/jik4back/home/jik4back/.ssh
+      state: directory
+  - name: create /d/backup/jik4
+    file:
+      path: /d/backup/jik4
+      owner: jik4back
+      state: directory
+  - name: create /home/jik4back/home/jik4back/backup
+    file:
+      path: /home/jik4back/home/jik4back/backup
+      owner: jik4back
+      state: directory
+  - name: install id_backup.pub in jik4back home directory
+    copy:
+      src: /tmp/jik4.{{email_domain}}/root/.ssh/id_backup.pub
+      dest: /home/jik4back/home/jik4back/.ssh/authorized_keys
+  - name: configure jk_lsh.ini
+    replace:
+      dest: /home/jik4back/etc/jailkit/jk_lsh.ini
+      regexp: '## example for a user.*'
+      replace: '[DEFAULT]\nexecutables=/usr/bin/rsync\npaths=/usr/bin'
+    register: lsh_ini
+  - name: check if user is jailed
+    command: grep -q -s jik4back /home/jik4back/etc/passwd
+    register: user_is_jailed
+    ignore_errors: yes
+    changed_when: no
+  - name: jail user
+    command: jk_jailuser -j /home/jik4back jik4back
+    when: user_is_jailed.rc != 0
+  - name: configure bind mount in /etc/fstab
+    lineinfile:
+      dest: /etc/fstab
+      line: '/d/backup/jik4 /home/jik4back/home/jik4back/backup none bind'
+    register: fstabchanged
+  - name: mount the bind mount for jik4back
+    command: mount /home/jik4back/home/jik4back/backup
+    when: fstabchanged.changed
+
+- name: mongodb backups
+  hosts: main_server
+  tasks:
+  - name: install python-pymongoi
+    yum: name=python-pymongo state=present
+  - name: confirm that /var/lib/mongo-incremental-export/export-cron exists
+    file:
+      path: /var/lib/mongo-incremental-export/export-cron
+      state: file
+  - name: create /etc/cron.daily/00-mongo-export-cron symlink
+    file:
+      path: /etc/cron.daily/00-mongo-export-cron
+      state: link
+      src: /var/lib/mongo-incremental-export/export-cron
+
+- name: mysql backups
+  hosts: main_server
+  tasks:
+  - name: install qpress and MariaDB-backup
+    yum:
+      name:
+      - qpress
+      - MariaDB-backup
+  - name: create /var/lib/mysql-backups
+    file: dest=/var/lib/mysql-backups state=directory mode=0700
+  - name: create /var/lib/mysql-backups/backup-cron
+    template:
+      src: mysql-backup-cron
+      dest: /var/lib/mysql-backups/backup-cron
+      mode: 0700
+  - name: create/etc/cron.daily/00-mysql-backups symlink
+    file:
+      path: /etc/cron.daily/00-mysql-backups
+      state: link
+      src: /var/lib/mysql-backups/backup-cron
+
+- name: jik4 backup to jik6
+  hosts: main_server
+  tasks:
+  - name: confirm /home/jik/scripts/jik4-backup.sh is as expected
+    command: grep -q -s jik6 /home/jik/scripts/jik4-backup.sh
+    changed_when: false
+  - name: install /etc/cron.daily/n-jik4-backup.sh symlink
+    file:
+      # "n-" prefix to ensure that it runs immediately after mlocate update,
+      # so that we can use the mlocate database to locate core files.
+      path: /etc/cron.daily/n-jik4-backup.sh
+      src: /home/jik/scripts/jik4-backup.sh
+      state: link
