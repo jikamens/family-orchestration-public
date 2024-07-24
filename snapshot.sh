@@ -17,7 +17,7 @@ if ! $force && [ -n "$(git status --porcelain 2>&1)" ]; then
     exit 1
 fi
 git checkout main
-git pull
+git pull || $force
 
 cd ~/src/$private
 if ! $force && [ -n "$(git status --porcelain 2>&1)" ]; then
@@ -26,4 +26,4 @@ if ! $force && [ -n "$(git status --porcelain 2>&1)" ]; then
 fi
 
 exclude=$(git submodule | awk '{print "--exclude=/" $2}')
-rsync -av --cvs-exclude $exclude ./ ~/src/$public/
+rsync -av --cvs-exclude --exclude /.ansible-facts/ $exclude ./ ~/src/$public/

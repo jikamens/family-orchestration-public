@@ -414,8 +414,8 @@
       autoconnect: true
       method4: manual
       dns4: ["127.0.0.1"]
-      ip4: {{ip4}}
-      gw4: {{gw4}}
+      ip4: '{{ip4}}'
+      gw4: '{{gw4}}'
       method6: manual
       ip6: ["{{ip6_1}}", "{{ip6_2}}"]
       gw6: fe80::1
