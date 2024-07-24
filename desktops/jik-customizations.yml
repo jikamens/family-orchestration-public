@@ -220,3 +220,4 @@
 - import_playbook: jik-customizations/rdp.yml
 - import_playbook: jik-customizations/gitconfig.yml
 - import_playbook: jik-customizations/debian-packaging.yml
+- import_playbook: jik-customizations/pipewire.yml

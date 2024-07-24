@@ -1,0 +1,30 @@
+- hosts: desktops
+  tasks:
+  - name: create ~/.config/pipewire
+    file:
+      path: /home/jik/.config/pipewire
+      state: directory
+      owner: jik
+      group: jik
+  - name: create ~/.config/pipewire/pipewire.conf.d
+    file:
+      path: /home/jik/.config/pipewire/pipewire.conf.d
+      state: directory
+      owner: jik
+      group: jik
+  - name: configure pipewire echo cancel module
+    copy:
+      dest: /home/jik/.config/pipewire/pipewire.conf.d/echo-cancel.conf
+      content: |
+        context.modules = [
+          {   name = libpipewire-module-echo-cancel }
+        ]
+    register: conf
+  - name: restart user pipewire service
+    systemd_service:
+      scope: user
+      name: pipewire
+      state: restarted
+    become: yes
+    become_user: jik
+    when: conf.changed
