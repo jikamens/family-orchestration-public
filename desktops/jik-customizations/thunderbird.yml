@@ -160,3 +160,29 @@
         #!/bin/sh -e
         su - jik -c ~jik/src/scripts/thunderbird-data-backup.sh
 
+  - name: configure mimeapps.list, part 1
+    ini_file:
+      path: /home/jik/.config/mimeapps.list
+      section: Default Applications
+      option: message/rfc822
+      value: jik-thunderbird.desktop
+      ignore_spaces: true
+      no_extra_spaces: true
+
+  - name: configure mimeapps.list, part 2
+    ini_file:
+      path: /home/jik/.config/mimeapps.list
+      section: Default Applications
+      option: x-scheme-handler/mailto
+      value: jik-thunderbird.desktop
+      ignore_spaces: true
+      no_extra_spaces: true
+
+  - name: configure mimeapps.list, part 3
+    ini_file:
+      path: /home/jik/.config/mimeapps.list
+      section: Added Associations
+      option: x-scheme-handler/mailto
+      value: jik-thunderbird.desktop;
+      ignore_spaces: true
+      no_extra_spaces: true

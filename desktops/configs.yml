@@ -27,10 +27,6 @@
       regexp: '^GRUB_TIMEOUT_STYLE='
     register: grub_menu
 
-  - name: update grub if necessary
-    command: update-grub
-    when: grub_timeout.changed or grub_menu.changed
-
   # UFW logging is usually useless
   - name: enable UFW and disable logging
     ufw: state=enabled logging=off
@@ -140,6 +136,21 @@
       line: email_address=none
       regexp: ^\s*email_address
 
+  - name: check if splash is enabled in grub config
+    command: grep -q -s '^GRUB_CMDLINE_LINUX_DEFAULT.*splash' /etc/default/grub
+    failed_when: false
+    changed_when: false
+    register: grep
+
+  - name: add splash to grub config
+    lineinfile:
+      dest: /etc/default/grub
+      backrefs: true
+      line: '\1 splash"'
+      regexp: '^( *GRUB_CMDLINE_LINUX_DEFAULT *= *".*)"'
+    when: grep.rc
+    register: splashgrub
+
 - hosts: laptops
   tasks:
   - name: disable suspend on lid close
@@ -243,16 +254,20 @@
     command: update-initramfs -c -k all
     when: als_blacklist.changed
 
+  - name: check if suspend power usage is fixed in grub config
+    command: grep -q -s '^GRUB_CMDLINE_LINUX_DEFAULT.*nvme.noacpi' /etc/default/grub
+    failed_when: false
+    changed_when: false
+    register: grep
+
   - name: fix suspend power usage on framework
     lineinfile:
-      line: GRUB_CMDLINE_LINUX_DEFAULT="quiet splash nvme.noacpi=1"
-      path: /etc/default/grub
-      regexp: ^GRUB_CMDLINE_LINUX_DEFAULT
+      dest: /etc/default/grub
+      backrefs: true
+      line: '\1 nvme.noacpi=1"'
+      regexp: '^( *GRUB_CMDLINE_LINUX_DEFAULT *= *".*)"'
+    when: grep.rc
     register: noacpi
-
-  - name: update grub after fixing suspend power usage
-    command: update-grub
-    when: noacpi.changed
 
   - name: Enable improved fractional scaling support for Ubuntu's GNOME environment using Wayland.
     gsetting:
@@ -300,15 +315,12 @@
 
 - hosts: desktops
   tasks:
+  - name: update grub if necessary
+    command: update-grub
+    when: grub_timeout.changed or grub_menu.changed or splashgrub.changed or
+      noacpi.changed
+
   - name: reboot message
     fail: msg='Please reboot and rerun playbook'
     when: headset_mic_input.changed or override_conf.changed or
       als_blacklist.changed or noacpi.changed
-
-- hosts: framework1l
-  tasks:
-  - name: Enable grub OS prober on framework1l
-    lineinfile:
-      path: /etc/default/grub
-      regexp: '^\s*#?\s*GRUB_DISABLE_OS_PROBER'
-      line: GRUB_DISABLE_OS_PROBER=false

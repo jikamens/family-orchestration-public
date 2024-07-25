@@ -92,7 +92,7 @@
   tasks:
   - name: mount /home/jik/pictures
     mount:
-      src: '//nas.{[home_domain}}/photo'
+      src: '//nas.{{home_domain}}/photo'
       path: '/home/jik/pictures'
       fstype: cifs
       boot: false

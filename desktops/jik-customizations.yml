@@ -193,6 +193,7 @@
   - name: Create Flameshot configuration directory
     file:
       path: /home/jik/.config/flameshot
+      state: directory
       owner: jik
       group: jik
 
@@ -214,9 +215,11 @@
 - import_playbook: synology-inotify/synology-inotify.yml
 - import_playbook: jik-customizations/gnucash.yml
 - import_playbook: jik-customizations/gnome-shell-extensions.yml
+# This needs to be before dock so we can put Thunderbird in the dock
+- import_playbook: jik-customizations/thunderbird.yml
+- import_playbook: jik-customizations/gnome-shell-dock.yml
 - import_playbook: jik-customizations/gnome-shell.yml
 - import_playbook: jik-customizations/favorites.yml
-- import_playbook: jik-customizations/thunderbird.yml
 - import_playbook: jik-customizations/rdp.yml
 - import_playbook: jik-customizations/gitconfig.yml
 - import_playbook: jik-customizations/debian-packaging.yml

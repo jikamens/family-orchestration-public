@@ -1,0 +1,38 @@
+- hosts: desktops
+  gather_facts: no
+  tasks:
+  - name: get facts
+    setup:
+    when: ansible_date_time is not defined
+
+  - name: fetch current dock contents
+    gsetting:
+      user: jik
+      key: org.gnome.shell.favorite-apps
+      value: ""
+    check_mode: true
+    changed_when: false
+    register: favorites
+
+  - name: convert dock contents to list
+    set_fact: favorite_apps={{favorites.unchanged_settings[0].value}}
+
+  - name: initialize new dock contents
+    set_fact: want_apps={{['org.gnome.Nautilus.desktop',
+      'libreoffice-writer.desktop', 'libreoffice-calc.desktop',
+      'org.gnome.Terminal.desktop', 'firefox.desktop',
+      'jik-thunderbird.desktop', 'emacs.desktop', 'slack.desktop',
+      'gnucash.desktop']}}
+
+  - name: pull PWAs from current dock contents
+    set_fact: pwa_apps={{favorite_apps|map('regex_search', '.*FFPWA.*')|
+      select('string')}}
+
+  - name: add PWAs to new dock contents
+    set_fact: want_apps={{want_apps + pwa_apps}}
+
+  - name: set new dock contents
+    gsetting:
+      user: jik
+      key: org.gnome.shell.favorite-apps
+      value: '{{want_apps|string}}'
